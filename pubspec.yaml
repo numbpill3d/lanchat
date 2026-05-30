@@ -78,3 +78,4 @@ msix_config:
   logo_path: assets/icon/icon.png
   capabilities: "internetClient,privateNetworkClientServer"
   languages: en-us
+  install_certificate: false
