@@ -1,0 +1,36 @@
+name: lanchat
+description: Zero-account local network chat for people on the same Wi-Fi.
+publish_to: none
+version: 1.0.0+1
+
+environment:
+  sdk: '>=3.3.0 <4.0.0'
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  # mDNS peer discovery (Android/iOS/macOS/Windows/Linux via Avahi)
+  bonsoir: ^5.1.1
+
+  # WebSocket server (each peer runs one)
+  shelf: ^1.4.1
+  shelf_web_socket: ^3.0.0
+  web_socket_channel: ^3.0.1
+
+  # File/image picker (all platforms)
+  file_picker: ^8.1.2
+
+  # State management
+  provider: ^6.1.2
+
+  # Unique IDs
+  uuid: ^4.4.2
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^4.0.0
+
+flutter:
+  uses-material-design: true
