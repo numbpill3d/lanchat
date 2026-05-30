@@ -1,10 +1,34 @@
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:window_manager/window_manager.dart';
 
 import 'services/chat_service.dart';
 import 'screens/nickname_screen.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+
+  if (!kIsWeb && (Platform.isLinux || Platform.isWindows || Platform.isMacOS)) {
+    await windowManager.ensureInitialized();
+    await windowManager.waitUntilReadyToShow(
+      const WindowOptions(
+        title: 'LanChat',
+        size: Size(820, 640),
+        minimumSize: Size(420, 520),
+        center: true,
+        titleBarStyle: TitleBarStyle.normal,
+        backgroundColor: Color(0xFF0A0A0A),
+      ),
+      () async {
+        await windowManager.show();
+        await windowManager.focus();
+      },
+    );
+  }
+
   runApp(
     ChangeNotifierProvider(
       create: (_) => ChatService(),

@@ -1,0 +1,172 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  # ── Linux ───────────────────────────────────────────────────────────────
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.44.0'
+          cache: true
+
+      - name: Install linux build deps
+        run: |
+          sudo apt-get update -y
+          sudo apt-get install -y \
+            clang cmake ninja-build \
+            libgtk-3-dev \
+            libavahi-client-dev \
+            libdbus-1-dev \
+            pkg-config
+
+      - run: flutter pub get
+
+      - run: flutter build linux --release
+
+      - name: Generate icons
+        run: dart run flutter_launcher_icons
+
+      - name: Create tarball
+        run: |
+          cd build/linux/x64/release/bundle
+          tar -czf "$GITHUB_WORKSPACE/lanchat-linux-x64.tar.gz" .
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: lanchat-linux-x64.tar.gz
+
+  # ── Windows ─────────────────────────────────────────────────────────────
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.44.0'
+          cache: true
+
+      - run: flutter pub get
+
+      - run: flutter build windows --release
+
+      - name: Create MSIX
+        run: dart run msix:create
+
+      - name: Zip raw bundle (fallback)
+        run: |
+          Compress-Archive `
+            -Path "build\windows\x64\runner\Release\*" `
+            -DestinationPath "lanchat-windows-x64.zip"
+        shell: pwsh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-msix
+          path: build/windows/x64/runner/Release/*.msix
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-zip
+          path: lanchat-windows-x64.zip
+
+  # ── macOS ────────────────────────────────────────────────────────────────
+  build-macos:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.44.0'
+          cache: true
+
+      - run: flutter pub get
+
+      - run: flutter build macos --release
+
+      - name: Create DMG
+        run: |
+          brew install create-dmg
+          create-dmg \
+            --volname "LanChat" \
+            --volicon "assets/icon/icon.png" \
+            --window-size 660 440 \
+            --icon-size 120 \
+            --icon "lanchat.app" 180 200 \
+            --app-drop-link 480 200 \
+            --background "assets/icon/icon.png" \
+            "lanchat-macos.dmg" \
+            "build/macos/Build/Products/Release/lanchat.app" \
+          || zip -r lanchat-macos.zip \
+               "build/macos/Build/Products/Release/lanchat.app"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos
+          path: |
+            lanchat-macos.dmg
+            lanchat-macos.zip
+
+  # ── Android ──────────────────────────────────────────────────────────────
+  build-android:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          flutter-version: '3.44.0'
+          cache: true
+
+      - run: flutter pub get
+
+      - run: flutter build apk --release --split-per-abi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: android
+          path: build/app/outputs/flutter-apk/*.apk
+
+  # ── GitHub Release ───────────────────────────────────────────────────────
+  release:
+    needs: [build-linux, build-windows, build-macos, build-android]
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          generate_release_notes: true
+          fail_on_unmatched_files: false
+          files: |
+            artifacts/linux/lanchat-linux-x64.tar.gz
+            artifacts/windows-msix/*.msix
+            artifacts/windows-zip/lanchat-windows-x64.zip
+            artifacts/macos/lanchat-macos.dmg
+            artifacts/macos/lanchat-macos.zip
+            artifacts/android/*.apk

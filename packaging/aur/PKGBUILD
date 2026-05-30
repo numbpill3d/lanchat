@@ -1,0 +1,59 @@
+# Maintainer: numbpill3d <deadgirl2133@gmail.com>
+pkgname=lanchat-bin
+pkgver=1.0.0
+pkgrel=1
+pkgdesc="Zero-account local network chat — no signup, no internet required"
+arch=('x86_64')
+url="https://github.com/numbpill3d/lanchat"
+license=('MIT')
+depends=(
+  'avahi'
+  'gtk3'
+  'glib2'
+  'libdbus'
+)
+optdepends=(
+  'xdg-desktop-portal-wlr: image picker on Wayland/sway'
+  'xdg-desktop-portal-gtk: image picker on X11/GNOME'
+)
+provides=('lanchat')
+conflicts=('lanchat')
+source=("${pkgname}-${pkgver}.tar.gz::${url}/releases/download/v${pkgver}/lanchat-linux-x64.tar.gz")
+sha256sums=('SKIP')
+
+package() {
+  # install the flutter bundle into /opt/lanchat
+  install -dm755 "${pkgdir}/opt/lanchat"
+  cp -r "${srcdir}/." "${pkgdir}/opt/lanchat/"
+
+  # wrapper script so it's on PATH
+  install -dm755 "${pkgdir}/usr/bin"
+  cat > "${pkgdir}/usr/bin/lanchat" << 'EOF'
+#!/bin/sh
+exec /opt/lanchat/lanchat "$@"
+EOF
+  chmod 755 "${pkgdir}/usr/bin/lanchat"
+
+  # desktop entry
+  install -Dm644 /dev/stdin "${pkgdir}/usr/share/applications/lanchat.desktop" << 'EOF'
+[Desktop Entry]
+Type=Application
+Name=LanChat
+GenericName=Local Network Chat
+Comment=Zero-account chat for people on the same Wi-Fi
+Exec=lanchat
+Icon=lanchat
+Categories=Network;Chat;InstantMessaging;
+Keywords=chat;lan;local;wifi;network;
+StartupNotify=true
+EOF
+
+  # icon (256px pulled from the bundle data or use a generated one)
+  # the flutter bundle ships flutter_assets; the icon lives in app.dso or separately
+  # for now, copy the app icon if the package ships one
+  if [ -f "${pkgdir}/opt/lanchat/data/flutter_assets/icons/icon.png" ]; then
+    install -Dm644 \
+      "${pkgdir}/opt/lanchat/data/flutter_assets/icons/icon.png" \
+      "${pkgdir}/usr/share/icons/hicolor/256x256/apps/lanchat.png"
+  fi
+}

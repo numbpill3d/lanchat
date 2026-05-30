@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <!-- rounded square bg -->
+  <rect width="1024" height="1024" rx="220" ry="220" fill="#0A0A0A"/>
+
+  <!-- speech bubble body -->
+  <path d="M 180,280
+           Q 180,180 280,180
+           L 744,180
+           Q 844,180 844,280
+           L 844,560
+           Q 844,660 744,660
+           L 440,660
+           L 340,820
+           L 320,660
+           Q 180,660 180,560
+           Z"
+        fill="#E53935"/>
+
+  <!-- three dots inside bubble (representing messages) -->
+  <circle cx="370" cy="420" r="52" fill="#0A0A0A"/>
+  <circle cx="512" cy="420" r="52" fill="#0A0A0A"/>
+  <circle cx="654" cy="420" r="52" fill="#0A0A0A"/>
+</svg>

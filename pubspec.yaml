@@ -27,10 +27,54 @@ dependencies:
   # Unique IDs
   uuid: ^4.4.2
 
+  # Desktop window title + min-size
+  window_manager: ^0.4.3
+
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
 
+  # Icon generation — run: dart run flutter_launcher_icons
+  flutter_launcher_icons: ^0.14.3
+
+  # Windows MSIX installer — run: dart run msix:create
+  msix: ^3.16.9
+
 flutter:
   uses-material-design: true
+
+  assets:
+    - assets/icon/
+    - assets/icons/
+
+# ── flutter_launcher_icons config ──────────────────────────────────────────
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/icon/icon.png"
+  adaptive_icon_background: "#0A0A0A"
+  adaptive_icon_foreground: "assets/icon/icon.png"
+  min_sdk_android: 21
+  remove_alpha_ios: true
+  linux:
+    generate: true
+    image_path: "assets/icon/icon.png"
+  macos:
+    generate: true
+    image_path: "assets/icon/icon.png"
+  windows:
+    generate: true
+    image_path: "assets/icon/icon.png"
+    icon_size: 48
+
+# ── Windows MSIX config ─────────────────────────────────────────────────────
+msix_config:
+  display_name: LanChat
+  publisher_display_name: numbpill3d
+  identity_name: com.lanchat.app
+  publisher: CN=numbpill3d
+  msix_version: 1.0.0.0
+  logo_path: assets/icon/icon.png
+  capabilities: "internetClient,privateNetworkClientServer"
+  languages: en-us
