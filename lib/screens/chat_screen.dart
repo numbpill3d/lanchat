@@ -120,7 +120,7 @@ class _ChatScreenState extends State<ChatScreen> {
               ),
             )
           else
-            ...service.peers.values.map(
+            ...service.sortedPeers.map(
               (p) => ListTile(
                 dense: true,
                 leading: const Icon(

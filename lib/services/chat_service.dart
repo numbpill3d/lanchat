@@ -11,9 +11,11 @@ import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../models/message.dart';
 import '../models/peer.dart';
+import 'database_service.dart';
 
 class ChatService extends ChangeNotifier {
   static const _mdnsType = '_lanchat._tcp';
+  static const _processedIdsMax = 10_000;
 
   final String _deviceId = const Uuid().v4();
   String? _nickname;
@@ -41,6 +43,18 @@ class ChatService extends ChangeNotifier {
 
   Future<void> start(String nickname) async {
     _nickname = nickname;
+
+    // load persisted messages
+    try {
+      final history = await DatabaseService.loadRecent();
+      _messages.addAll(history);
+      for (final msg in history) {
+        _processedIds.add(msg.id);
+      }
+    } catch (e) {
+      debugPrint('lanchat: failed to load history: $e');
+    }
+
     await _startServer();
     await _startBroadcast();
     await _startDiscovery();
@@ -136,6 +150,9 @@ class ChatService extends ChangeNotifier {
             _clientChannels[peerId]?.sink.close();
             _clientChannels.remove(peerId);
             notifyListeners();
+
+            // auto-reconnect: re-trigger discovery
+            _restartDiscovery();
           }
 
         default:
@@ -144,6 +161,22 @@ class ChatService extends ChangeNotifier {
     });
 
     await _bonsoirDiscovery!.start();
+  }
+
+  Future<void> _restartDiscovery() async {
+    // brief delay to avoid reconnect storms
+    await Future.delayed(const Duration(seconds: 2));
+    try {
+      await _bonsoirDiscovery?.stop();
+      await _bonsoirDiscovery?.start();
+    } catch (_) {}
+  }
+
+  /// Sorted peer list (by nickname, case-insensitive).
+  List<Peer> get sortedPeers {
+    final list = _peers.values.toList();
+    list.sort((a, b) => a.nickname.toLowerCase().compareTo(b.nickname.toLowerCase()));
+    return list;
   }
 
   Future<void> _connectToPeer(Peer peer) async {
@@ -178,11 +211,13 @@ class ChatService extends ChangeNotifier {
         _clientChannels.remove(peer.id);
         _peers.remove(peer.id);
         notifyListeners();
+        _restartDiscovery();
       },
       onError: (_) {
         _clientChannels.remove(peer.id);
         _peers.remove(peer.id);
         notifyListeners();
+        _restartDiscovery();
       },
       cancelOnError: true,
     );
@@ -194,9 +229,19 @@ class ChatService extends ChangeNotifier {
       final json = jsonDecode(raw) as Map<String, dynamic>;
       final msg = Message.fromJson(json);
       if (_processedIds.contains(msg.id)) return;
+
       _processedIds.add(msg.id);
+      // prevent unbounded growth
+      if (_processedIds.length > _processedIdsMax) {
+        final toRemove = _processedIds.take((_processedIds.length - _processedIdsMax) ~/ 2).toSet();
+        _processedIds.removeAll(toRemove);
+      }
+
       _messages.add(msg);
       notifyListeners();
+
+      // persist to database (non-blocking)
+      DatabaseService.saveMessage(msg);
     } catch (e) {
       debugPrint('lanchat: bad message: $e');
     }
@@ -229,6 +274,7 @@ class ChatService extends ChangeNotifier {
     _messages.add(msg);
     notifyListeners();
     _broadcastMessage(msg);
+    DatabaseService.saveMessage(msg);
   }
 
   Future<void> sendImage(Uint8List bytes, String mimeType) async {
@@ -243,6 +289,7 @@ class ChatService extends ChangeNotifier {
     _messages.add(msg);
     notifyListeners();
     _broadcastMessage(msg);
+    DatabaseService.saveMessage(msg);
   }
 
   Future<void> stop() async {
@@ -275,6 +322,8 @@ class ChatService extends ChangeNotifier {
     _processedIds.clear();
     _httpServer = null;
     _nickname = null;
+
+    await DatabaseService.close();
 
     notifyListeners();
   }
