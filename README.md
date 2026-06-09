@@ -1,17 +1,19 @@
 # lanchat
 
-A new Flutter project.
+Zero-account local network chat for people on the same Wi-Fi.
 
-## Getting Started
+Built with Flutter. Uses mDNS (Bonjour/Avahi) for peer discovery and WebSockets for messaging.
 
-This project is a starting point for a Flutter application.
+## What it does
 
-A few resources to get you started if this is your first Flutter project:
+- No signup, no internet, no server — just open and talk
+- Automatically finds everyone on the same Wi-Fi via mDNS
+- Supports text messages and image sharing
+- Cross-platform: Android, iOS, Linux, macOS, Windows
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## What's Improved
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+- **Message persistence** — chat history survives app restarts (SQLite-backed).
+- **Auto-reconnect** — re-discovers peers automatically when a connection drops.
+- **Sorted peers** — online list is alphabetical by nickname.
+- **Memory safety** — processed ID cache is capped at 10,000 entries to prevent unbounded growth.

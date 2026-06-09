@@ -21,6 +21,10 @@ dependencies:
   # File/image picker (all platforms)
   file_picker: ^8.1.2
 
+  # Message persistence
+  sqflite: ^2.3.0
+  path: ^1.9.0
+
   # State management
   provider: ^6.1.2
 
