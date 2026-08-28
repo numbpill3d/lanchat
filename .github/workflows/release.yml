@@ -4,13 +4,14 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
 
 permissions:
   contents: write
 
 jobs:
-  # ── Linux ───────────────────────────────────────────────────────────────
   build-linux:
+    name: Linux
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -18,10 +19,9 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: '3.44.0'
           cache: true
 
-      - name: Install linux build deps
+      - name: Install Linux build dependencies
         run: |
           sudo apt-get update -y
           sudo apt-get install -y \
@@ -32,24 +32,23 @@ jobs:
             pkg-config
 
       - run: flutter pub get
-
+      - run: dart run flutter_launcher_icons
       - run: flutter build linux --release
 
-      - name: Generate icons
-        run: dart run flutter_launcher_icons
-
-      - name: Create tarball
+      - name: Package tarball
         run: |
-          cd build/linux/x64/release/bundle
-          tar -czf "$GITHUB_WORKSPACE/lanchat-linux-x64.tar.gz" .
+          mkdir -p "$GITHUB_WORKSPACE/dist"
+          tar -czf "$GITHUB_WORKSPACE/dist/lanchat-linux-x64.tar.gz" \
+            -C build/linux/x64/release/bundle .
 
       - uses: actions/upload-artifact@v4
         with:
           name: linux
-          path: lanchat-linux-x64.tar.gz
+          path: dist/lanchat-linux-x64.tar.gz
+          if-no-files-found: error
 
-  # ── Windows ─────────────────────────────────────────────────────────────
   build-windows:
+    name: Windows
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -57,35 +56,51 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: '3.44.0'
           cache: true
 
       - run: flutter pub get
-
+      - run: dart run flutter_launcher_icons
       - run: flutter build windows --release
 
-      - name: Create MSIX
-        run: dart run msix:create --install-certificate false
-
-      - name: Zip raw bundle (fallback)
+      - name: Zip raw bundle
+        shell: pwsh
         run: |
           Compress-Archive `
-            -Path "build\windows\x64\runner\Release\*" `
+            -Path "build/windows/x64/runner/Release/*" `
             -DestinationPath "lanchat-windows-x64.zip"
-        shell: pwsh
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: windows-msix
-          path: build/windows/x64/runner/Release/*.msix
 
       - uses: actions/upload-artifact@v4
         with:
           name: windows-zip
           path: lanchat-windows-x64.zip
+          if-no-files-found: error
 
-  # ── macOS ────────────────────────────────────────────────────────────────
+      - name: Create MSIX
+        shell: pwsh
+        env:
+          CERT_BASE64: ${{ secrets.MSIX_CERT_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.MSIX_CERT_PASSWORD }}
+        run: |
+          if ($env:CERT_BASE64) {
+            $bytes = [Convert]::FromBase64String($env:CERT_BASE64)
+            [IO.File]::WriteAllBytes("msix-cert.pfx", $bytes)
+            $certPassword = $env:CERT_PASSWORD
+            if (-not $certPassword) { $certPassword = '' }
+            dart run msix:create --certificate-path msix-cert.pfx --certificate-password $certPassword
+            Remove-Item msix-cert.pfx -Force
+          } else {
+            dart run msix:create --install-certificate false
+          }
+        working-directory: ${{ github.workspace }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-msix
+          path: build/windows/x64/runner/Release/*.msix
+          if-no-files-found: warn
+
   build-macos:
+    name: macOS
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4
@@ -93,38 +108,46 @@ jobs:
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: '3.44.0'
           cache: true
 
       - run: flutter pub get
-
+      - run: dart run flutter_launcher_icons
       - run: flutter build macos --release
 
-      - name: Create DMG
+      - name: Package .app bundle
+        shell: bash
         run: |
-          brew install create-dmg
-          create-dmg \
-            --volname "LanChat" \
-            --volicon "assets/icon/icon.png" \
-            --window-size 660 440 \
-            --icon-size 120 \
-            --icon "lanchat.app" 180 200 \
-            --app-drop-link 480 200 \
-            --background "assets/icon/icon.png" \
-            "lanchat-macos.dmg" \
-            "build/macos/Build/Products/Release/lanchat.app" \
-          || zip -r lanchat-macos.zip \
-               "build/macos/Build/Products/Release/lanchat.app"
+          set -euo pipefail
+          mkdir -p dist
+          cd build/macos/Build/Products/Release
+          (command -v create-dmg >/dev/null && {
+              brew install create-dmg || true
+              create-dmg \
+                --volname "LanChat" \
+                --volicon "$GITHUB_WORKSPACE/assets/icon/icon.png" \
+                --window-size 660 440 \
+                --icon-size 120 \
+                --icon "lanchat.app" 180 200 \
+                --app-drop-link 480 200 \
+                --background "$GITHUB_WORKSPACE/assets/icon/icon.png" \
+                "$GITHUB_WORKSPACE/dist/lanchat-macos.dmg" \
+                "lanchat.app" || true
+          }) || true
+          if [ ! -f "$GITHUB_WORKSPACE/dist/lanchat-macos.dmg" ]; then
+            (cd "$GITHUB_WORKSPACE" && zip -r dist/lanchat-macos.zip \
+              build/macos/Build/Products/Release/lanchat.app)
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
           name: macos
           path: |
-            lanchat-macos.dmg
-            lanchat-macos.zip
+            dist/lanchat-macos.dmg
+            dist/lanchat-macos.zip
+          if-no-files-found: error
 
-  # ── Android ──────────────────────────────────────────────────────────────
   build-android:
+    name: Android
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
@@ -134,30 +157,58 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Install Android SDK platform 36
-        run: |
-          echo "y" | ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager \
-            "platforms;android-36" \
-            "build-tools;36.0.0" \
-          || true
-
       - uses: subosito/flutter-action@v2
         with:
           channel: stable
-          flutter-version: '3.44.0'
           cache: true
+          java-version: '17'
+
+      - name: Decode Android signing key
+        if: ${{ secrets.LANCHAT_KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_BASE64: ${{ secrets.LANCHAT_KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.LANCHAT_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.LANCHAT_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.LANCHAT_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          [ -z "$KEYSTORE_BASE64" ] || {
+            mkdir -p android/app
+            echo "$KEYSTORE_BASE64" | base64 -d > android/app/keystore.jks
+            printf 'storePassword=%s\nkeyPassword=%s\nkeyAlias=%s\nstoreFile=keystore.jks\n' \
+              "$KEYSTORE_PASSWORD" "$KEY_PASSWORD" "$KEY_ALIAS" \
+              > android/key.properties
+          }
 
       - run: flutter pub get
-
+      - run: dart run flutter_launcher_icons
       - run: flutter build apk --release --split-per-abi
+
+      - name: Verify APK signing
+        shell: bash
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for apk in build/app/outputs/flutter-apk/*.apk; do
+            if ! command -v apksigner >/dev/null; then
+              echo "apksigner not available; skipping signature check for $apk"
+              continue
+            fi
+            if ! apksigner verify --print-certs "$apk" >/dev/null 2>&1; then
+              echo "::error::APK is not properly signed: $apk"
+              apksigner verify --verbose "$apk" || true
+              exit 1
+            fi
+          done
 
       - uses: actions/upload-artifact@v4
         with:
           name: android
           path: build/app/outputs/flutter-apk/*.apk
+          if-no-files-found: error
 
-  # ── GitHub Release ───────────────────────────────────────────────────────
   release:
+    name: GitHub Release
     needs: [build-linux, build-windows, build-macos, build-android]
     if: always() && !cancelled()
     runs-on: ubuntu-22.04
@@ -166,8 +217,7 @@ jobs:
         with:
           path: artifacts/
 
-      - name: Publish release
-        uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v2
         with:
           generate_release_notes: true
           fail_on_unmatched_files: false
