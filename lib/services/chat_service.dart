@@ -80,13 +80,15 @@ class ChatService extends ChangeNotifier {
   }
 
   Future<void> _startBroadcast() async {
+    final nick = _nickname;
+    if (nick == null) return;
     final service = BonsoirService(
-      name: '${_nickname}_$_deviceId',
+      name: '${nick}_$_deviceId',
       type: _mdnsType,
       port: _serverPort,
       attributes: {
         'id': _deviceId,
-        'nick': _nickname!,
+        'nick': nick,
       },
     );
     _bonsoirBroadcast = BonsoirBroadcast(service: service);
@@ -147,6 +149,12 @@ class ChatService extends ChangeNotifier {
   }
 
   Future<void> _connectToPeer(Peer peer) async {
+    final nick = _nickname;
+    if (nick == null) {
+      _peers.remove(peer.id);
+      notifyListeners();
+      return;
+    }
     final uri = Uri.parse('ws://${peer.host}:${peer.port}');
     final channel = WebSocketChannel.connect(uri);
 
@@ -166,9 +174,9 @@ class ChatService extends ChangeNotifier {
       channel,
       Message(
         type: MessageType.join,
-        senderNickname: _nickname!,
+        senderNickname: nick,
         senderId: _deviceId,
-        content: '${_nickname!} joined',
+        content: '$nick joined',
       ),
     );
 
@@ -219,9 +227,11 @@ class ChatService extends ChangeNotifier {
   }
 
   void sendText(String text) {
+    final nick = _nickname;
+    if (nick == null || text.isEmpty) return;
     final msg = Message(
       type: MessageType.text,
-      senderNickname: _nickname!,
+      senderNickname: nick,
       senderId: _deviceId,
       content: text,
     );
@@ -232,9 +242,11 @@ class ChatService extends ChangeNotifier {
   }
 
   Future<void> sendImage(Uint8List bytes, String mimeType) async {
+    final nick = _nickname;
+    if (nick == null || bytes.isEmpty) return;
     final msg = Message(
       type: MessageType.image,
-      senderNickname: _nickname!,
+      senderNickname: nick,
       senderId: _deviceId,
       content: base64Encode(bytes),
       mimeType: mimeType,
@@ -246,12 +258,13 @@ class ChatService extends ChangeNotifier {
   }
 
   Future<void> stop() async {
-    if (_nickname != null && isRunning) {
+    final nick = _nickname;
+    if (nick != null && isRunning) {
       _broadcastMessage(Message(
         type: MessageType.leave,
-        senderNickname: _nickname!,
+        senderNickname: nick,
         senderId: _deviceId,
-        content: '${_nickname!} left',
+        content: '$nick left',
       ));
     }
 
