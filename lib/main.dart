@@ -7,6 +7,14 @@ import 'package:window_manager/window_manager.dart';
 
 import 'services/chat_service.dart';
 import 'screens/nickname_screen.dart';
+import 'theme/retro.dart';
+
+/// The app draws its own Macintosh title bar inside the client area, but the
+/// native one is left in place: on some Wayland compositors a hidden title
+/// bar plus custom drag can leave the window unmovable, which is far too high
+/// a price for chrome. Flip this to true to try the real frameless look —
+/// the in-app title bar is already there either way.
+const bool _kFrameless = false;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -16,11 +24,12 @@ void main() async {
     await windowManager.waitUntilReadyToShow(
       const WindowOptions(
         title: 'LanChat',
-        size: Size(820, 640),
-        minimumSize: Size(420, 520),
+        size: Size(680, 520),
+        minimumSize: Size(440, 420),
         center: true,
-        titleBarStyle: TitleBarStyle.normal,
-        backgroundColor: Color(0xFF0A0A0A),
+        titleBarStyle:
+            _kFrameless ? TitleBarStyle.hidden : TitleBarStyle.normal,
+        backgroundColor: Retro.bg,
       ),
       () async {
         await windowManager.show();
@@ -53,54 +62,66 @@ class LanChatApp extends StatelessWidget {
   }
 
   ThemeData _theme() {
-    const bg = Color(0xFF0A0A0A);
-    const surface = Color(0xFF141414);
-    const accent = Color(0xFFE53935);
+    const square = OutlineInputBorder(
+      borderRadius: BorderRadius.zero,
+      borderSide: BorderSide(color: Retro.rule),
+    );
 
     return ThemeData(
       useMaterial3: true,
+      fontFamily: Retro.mono,
+      fontFamilyFallback: Retro.monoFallback,
       colorScheme: const ColorScheme.dark(
-        surface: bg,
-        primary: accent,
-        secondary: accent,
-        onSurface: Color(0xFFE8E8E8),
-        onPrimary: Colors.white,
-        surfaceContainerHighest: surface,
-        outline: Color(0xFF2A2A2A),
+        surface: Retro.bg,
+        primary: Retro.accent,
+        secondary: Retro.accent,
+        onSurface: Retro.ink,
+        onPrimary: Retro.bg,
+        surfaceContainerHighest: Retro.panel,
+        outline: Retro.rule,
       ),
-      scaffoldBackgroundColor: bg,
-      appBarTheme: const AppBarTheme(
-        backgroundColor: bg,
-        foregroundColor: Color(0xFFE8E8E8),
-        elevation: 0,
-        surfaceTintColor: Colors.transparent,
+      scaffoldBackgroundColor: Retro.bg,
+      dividerTheme: const DividerThemeData(
+        color: Retro.ruleDim,
+        thickness: 1,
+        space: 1,
+      ),
+      textSelectionTheme: const TextSelectionThemeData(
+        cursorColor: Retro.accent,
+        selectionColor: Retro.accentDim,
+        selectionHandleColor: Retro.accent,
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: surface,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(4),
-          borderSide: const BorderSide(color: Color(0xFF2A2A2A)),
+        fillColor: Retro.panel,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        border: square,
+        enabledBorder: square,
+        focusedBorder: const OutlineInputBorder(
+          borderRadius: BorderRadius.zero,
+          borderSide: BorderSide(color: Retro.accent),
         ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(4),
-          borderSide: const BorderSide(color: Color(0xFF2A2A2A)),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(4),
-          borderSide: const BorderSide(color: accent, width: 1.5),
-        ),
-        hintStyle: const TextStyle(color: Color(0xFF555555)),
+        hintStyle: Retro.text(size: 13, color: Retro.inkFaint),
       ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: accent,
-          foregroundColor: Colors.white,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
-          minimumSize: const Size(double.infinity, 48),
-          elevation: 0,
+      tooltipTheme: TooltipThemeData(
+        decoration: const BoxDecoration(
+          color: Retro.panelHi,
+          border: Retro.box,
         ),
+        padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 4),
+        textStyle: Retro.text(size: 10, color: Retro.ink, spacing: 1),
+        waitDuration: const Duration(milliseconds: 450),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        backgroundColor: Retro.panelHi,
+        contentTextStyle: Retro.text(size: 12, color: Retro.ink),
+        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+        behavior: SnackBarBehavior.fixed,
+      ),
+      scrollbarTheme: ScrollbarThemeData(
+        thickness: WidgetStateProperty.all(6.0),
+        radius: Radius.zero,
+        thumbColor: WidgetStateProperty.all(Retro.rule),
       ),
     );
   }

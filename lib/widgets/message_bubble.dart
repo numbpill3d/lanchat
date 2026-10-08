@@ -1,9 +1,16 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../models/message.dart';
+import '../theme/retro.dart';
 
+/// One line of transcript.
+///
+/// No bubbles: this reads as a log — `14:32 │ <nick> text` — with a 1px rail
+/// that goes accent for your own lines. Kept as `MessageBubble` so the chat
+/// screen's call site is unchanged.
 class MessageBubble extends StatelessWidget {
   final Message message;
   final bool isLocal;
@@ -17,72 +24,69 @@ class MessageBubble extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (message.type == MessageType.join || message.type == MessageType.leave) {
-      return _SystemLine(text: message.content);
+      return _SystemLine(
+        text: message.content,
+        joined: message.type == MessageType.join,
+      );
     }
 
+    final rail = isLocal ? Retro.accent : Retro.rule;
+    final nickColor = isLocal ? Retro.accent : Retro.live;
+
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
-      child: Column(
-        crossAxisAlignment:
-            isLocal ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (!isLocal)
-            Padding(
-              padding: const EdgeInsets.only(left: 4, bottom: 3),
-              child: Text(
-                message.senderNickname,
-                style: const TextStyle(
-                  fontSize: 10,
-                  color: Color(0xFF666666),
-                  letterSpacing: 0.4,
-                ),
-              ),
-            ),
-          ConstrainedBox(
-            constraints: BoxConstraints(
-              maxWidth: MediaQuery.of(context).size.width * 0.74,
-            ),
-            child: Container(
-              decoration: BoxDecoration(
-                color: isLocal
-                    ? const Color(0xFFB71C1C)
-                    : const Color(0xFF1A1A1A),
-                borderRadius: BorderRadius.only(
-                  topLeft: const Radius.circular(14),
-                  topRight: const Radius.circular(14),
-                  bottomLeft: Radius.circular(isLocal ? 14 : 2),
-                  bottomRight: Radius.circular(isLocal ? 2 : 14),
-                ),
-              ),
-              clipBehavior: Clip.hardEdge,
-              child: message.type == MessageType.image
-                  ? _ImageContent(base64data: message.content)
-                  : Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 13,
-                        vertical: 9,
-                      ),
-                      child: Text(
-                        message.content,
-                        style: TextStyle(
-                          fontSize: 14,
-                          height: 1.4,
-                          color: isLocal
-                              ? Colors.white
-                              : const Color(0xFFE0E0E0),
-                        ),
-                      ),
-                    ),
-            ),
-          ),
           Padding(
-            padding: const EdgeInsets.only(top: 3, left: 4, right: 4),
+            padding: const EdgeInsets.only(top: 1),
             child: Text(
               _hhmm(message.timestamp),
-              style: const TextStyle(
-                fontSize: 10,
-                color: Color(0xFF333333),
+              style: Retro.text(size: 10, color: Retro.inkFaint),
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Container(
+              padding: const EdgeInsets.only(left: 9),
+              decoration: BoxDecoration(
+                border: Border(left: BorderSide(color: rail, width: 1)),
               ),
+              child: message.type == MessageType.image
+                  ? Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '<${message.senderNickname}> sent an image',
+                          style: Retro.text(size: 12, color: nickColor),
+                        ),
+                        const SizedBox(height: 5),
+                        _ImageFrame(base64data: message.content),
+                      ],
+                    )
+                  : RichText(
+                      text: TextSpan(
+                        children: [
+                          TextSpan(
+                            text: '<${message.senderNickname}> ',
+                            style: Retro.text(
+                              size: 12.5,
+                              color: nickColor,
+                              weight: FontWeight.w700,
+                              height: 1.45,
+                            ),
+                          ),
+                          TextSpan(
+                            text: message.content,
+                            style: Retro.text(
+                              size: 12.5,
+                              color: Retro.ink,
+                              height: 1.45,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
             ),
           ),
         ],
@@ -97,45 +101,69 @@ class MessageBubble extends StatelessWidget {
   }
 }
 
+/// Join/leave notices: a captioned rule across the column.
 class _SystemLine extends StatelessWidget {
   final String text;
-  const _SystemLine({required this.text});
+  final bool joined;
+  const _SystemLine({required this.text, required this.joined});
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Center(
-        child: Text(
-          text,
-          style: const TextStyle(
-            fontSize: 11,
-            color: Color(0xFF3A3A3A),
-            fontStyle: FontStyle.italic,
+      padding: const EdgeInsets.fromLTRB(14, 9, 14, 9),
+      child: Row(
+        children: [
+          Container(width: 10, height: 1, color: Retro.ruleDim),
+          const SizedBox(width: 8),
+          Text(
+            joined ? '+' : '-',
+            style: Retro.text(
+              size: 11,
+              color: joined ? Retro.live : Retro.inkFaint,
+              weight: FontWeight.w700,
+            ),
           ),
-        ),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              text.toLowerCase(),
+              style: Retro.text(size: 10.5, color: Retro.inkDim, spacing: 0.4),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          const SizedBox(width: 8),
+          Expanded(child: Container(height: 1, color: Retro.ruleDim)),
+        ],
       ),
     );
   }
 }
 
-class _ImageContent extends StatelessWidget {
+/// Images sit in a hairline frame with a caption bar, like a dumped file.
+class _ImageFrame extends StatelessWidget {
   final String base64data;
-  const _ImageContent({required this.base64data});
+  const _ImageFrame({required this.base64data});
 
   @override
   Widget build(BuildContext context) {
+    final Uint8List bytes;
     try {
-      final bytes = base64Decode(base64data);
-      return Image.memory(
-        bytes,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => const _ImageError(),
-      );
+      bytes = base64Decode(base64data);
     } catch (_) {
       return const _ImageError();
     }
+
+    return Container(
+      constraints: const BoxConstraints(maxWidth: 260, maxHeight: 240),
+      decoration: const BoxDecoration(border: Retro.box),
+      padding: const EdgeInsets.all(3),
+      child: Image.memory(
+        bytes,
+        fit: BoxFit.contain,
+        gaplessPlayback: true,
+        errorBuilder: (_, __, ___) => const _ImageError(),
+      ),
+    );
   }
 }
 
@@ -144,11 +172,12 @@ class _ImageError extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return const Padding(
-      padding: EdgeInsets.all(12),
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(border: Retro.boxOf(Retro.inkFaint)),
       child: Text(
-        'image failed to load',
-        style: TextStyle(color: Color(0xFF444444), fontSize: 12),
+        '! image failed to decode',
+        style: Retro.text(size: 11, color: Retro.inkFaint),
       ),
     );
   }
