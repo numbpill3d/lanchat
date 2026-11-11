@@ -23,7 +23,10 @@ class Message {
     this.mimeType,
     DateTime? timestamp,
   })  : id = id ?? const Uuid().v4(),
-        timestamp = timestamp ?? DateTime.now();
+        timestamp = DateTime.fromMillisecondsSinceEpoch(
+          (timestamp ?? DateTime.now()).millisecondsSinceEpoch,
+          isUtc: timestamp?.isUtc ?? false,
+        );
 
   Map<String, dynamic> toJson() => {
         'id': id,
@@ -55,9 +58,7 @@ class Message {
       throw const FormatException('message timestamp is invalid');
     }
     if (content.length >
-        (type == MessageType.image
-            ? maxImagePayloadLength
-            : maxTextLength)) {
+        (type == MessageType.image ? maxImagePayloadLength : maxTextLength)) {
       throw const FormatException('message content is too large');
     }
 

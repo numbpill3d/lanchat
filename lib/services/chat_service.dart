@@ -39,6 +39,7 @@ class ChatService extends ChangeNotifier {
   final Set<String> _connectingPeers = {};
   bool _disposed = false;
   String? _startupWarning;
+  Future<void>? _startInFlight;
 
   List<Message> get messages => List.unmodifiable(_messages);
   Map<String, Peer> get peers => Map.unmodifiable(_peers);
@@ -50,6 +51,21 @@ class ChatService extends ChangeNotifier {
 
   Future<void> start(String nickname) async {
     if (isRunning) return;
+    final inFlight = _startInFlight;
+    if (inFlight != null) {
+      await inFlight;
+      return;
+    }
+    final operation = _startInternal(nickname);
+    _startInFlight = operation;
+    try {
+      await operation;
+    } finally {
+      if (identical(_startInFlight, operation)) _startInFlight = null;
+    }
+  }
+
+  Future<void> _startInternal(String nickname) async {
     final cleaned = nickname.trim();
     if (cleaned.isEmpty || cleaned.length > 24) {
       throw ArgumentError('nickname must be between 1 and 24 characters');
@@ -132,51 +148,61 @@ class ChatService extends ChangeNotifier {
     _bonsoirDiscovery = BonsoirDiscovery(type: _mdnsType);
     await _bonsoirDiscovery!.ready;
 
-    _discoverySubscription = _bonsoirDiscovery!.eventStream!.listen((event) {
-      switch (event.type) {
-        case BonsoirDiscoveryEventType.discoveryServiceFound:
-          event.service?.resolve(_bonsoirDiscovery!.serviceResolver);
+    _discoverySubscription = _bonsoirDiscovery!.eventStream!.listen(
+      (event) {
+        switch (event.type) {
+          case BonsoirDiscoveryEventType.discoveryServiceFound:
+            event.service?.resolve(_bonsoirDiscovery!.serviceResolver);
 
-        case BonsoirDiscoveryEventType.discoveryServiceResolved:
-          final svc = event.service;
-          if (svc == null) return;
+          case BonsoirDiscoveryEventType.discoveryServiceResolved:
+            final svc = event.service;
+            if (svc == null) return;
 
-          final attrs = svc.attributes;
-          final peerId = attrs['id'];
-          final peerNick = attrs['nick'] ?? svc.name;
+            final attrs = svc.attributes;
+            final peerId = attrs['id'];
+            final peerNick = attrs['nick'] ?? svc.name;
 
-          if (peerId == null || peerId == _deviceId) return;
-          if (_clientChannels.containsKey(peerId) ||
-              _connectingPeers.contains(peerId)) return;
+            if (peerId == null || peerId == _deviceId) return;
+            if (_clientChannels.containsKey(peerId) ||
+                _connectingPeers.contains(peerId)) {
+              return;
+            }
 
-          final resolved = svc as ResolvedBonsoirService;
-          final host = resolved.host;
-          if (host == null) return;
+            final resolved = svc as ResolvedBonsoirService;
+            final host = resolved.host;
+            if (host == null) return;
 
-          final peer = Peer(
-            id: peerId,
-            nickname: peerNick,
-            host: host,
-            port: svc.port,
-          );
-          _peers[peerId] = peer;
-          _notifyChanged();
-
-          _connectToPeer(peer);
-
-        case BonsoirDiscoveryEventType.discoveryServiceLost:
-          final peerId = event.service?.attributes['id'];
-          if (peerId != null && peerId != _deviceId) {
-            _peers.remove(peerId);
-            _clientChannels[peerId]?.sink.close();
-            _clientChannels.remove(peerId);
+            final peer = Peer(
+              id: peerId,
+              nickname: peerNick,
+              host: host,
+              port: svc.port,
+            );
+            _peers[peerId] = peer;
             _notifyChanged();
-          }
 
-        default:
-          break;
-      }
-    });
+            _connectToPeer(peer);
+
+          case BonsoirDiscoveryEventType.discoveryServiceLost:
+            final peerId = event.service?.attributes['id'];
+            if (peerId != null && peerId != _deviceId) {
+              _peers.remove(peerId);
+              _clientChannels[peerId]?.sink.close();
+              _clientChannels.remove(peerId);
+              _notifyChanged();
+            }
+
+          default:
+            break;
+        }
+      },
+      onError: (Object error, StackTrace stack) {
+        _startupWarning =
+            'mDNS discovery stopped. The local chat server is still running.';
+        debugPrint('lanchat: mDNS discovery error: $error');
+        _notifyChanged();
+      },
+    );
 
     await _bonsoirDiscovery!.start();
   }
@@ -197,7 +223,9 @@ class ChatService extends ChangeNotifier {
       await channel.ready;
     } catch (e) {
       _connectingPeers.remove(peer.id);
-      try { await channel.sink.close(); } catch (_) {}
+      try {
+        await channel.sink.close();
+      } catch (_) {}
       debugPrint('lanchat: connect to ${peer.nickname} failed: $e');
       _peers.remove(peer.id);
       _notifyChanged();
@@ -276,11 +304,15 @@ class ChatService extends ChangeNotifier {
     final raw = jsonEncode(msg.toJson());
     for (final ch in _serverChannels.values) {
       if (identical(ch, except)) continue;
-      try { ch.sink.add(raw); } catch (_) {}
+      try {
+        ch.sink.add(raw);
+      } catch (_) {}
     }
     for (final ch in _clientChannels.values) {
       if (identical(ch, except)) continue;
-      try { ch.sink.add(raw); } catch (_) {}
+      try {
+        ch.sink.add(raw);
+      } catch (_) {}
     }
   }
 
@@ -338,7 +370,9 @@ class ChatService extends ChangeNotifier {
       ..._clientChannels.values,
     ];
     for (final ch in allChannels) {
-      try { await ch.sink.close(); } catch (_) {}
+      try {
+        await ch.sink.close();
+      } catch (_) {}
     }
 
     await _httpServer?.close(force: true);

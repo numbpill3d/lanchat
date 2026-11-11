@@ -118,7 +118,8 @@ class _ChatScreenState extends State<ChatScreen> {
         insetPadding: const EdgeInsets.all(28),
         child: Container(
           constraints: const BoxConstraints(maxWidth: 340, maxHeight: 360),
-          decoration: const BoxDecoration(color: Retro.panel, border: Retro.box),
+          decoration:
+              const BoxDecoration(color: Retro.panel, border: Retro.box),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -222,8 +223,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     Expanded(
                       child: LayoutBuilder(
                         builder: (context, constraints) {
-                          final wide =
-                              constraints.maxWidth >= kGutterMinWidth;
+                          final wide = constraints.maxWidth >= kGutterMinWidth;
                           final transcript = service.messages.isEmpty
                               ? _EmptyState(nickname: service.nickname ?? '')
                               : Scrollbar(

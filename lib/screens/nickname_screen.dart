@@ -30,12 +30,32 @@ class _NicknameScreenState extends State<NicknameScreen> {
   Timer? _bootTimer;
 
   static const _adj = [
-    'swift', 'quiet', 'bold', 'dark', 'neon', 'ghost',
-    'wild', 'frost', 'ash', 'iron', 'void', 'echo',
+    'swift',
+    'quiet',
+    'bold',
+    'dark',
+    'neon',
+    'ghost',
+    'wild',
+    'frost',
+    'ash',
+    'iron',
+    'void',
+    'echo',
   ];
   static const _noun = [
-    'hawk', 'wolf', 'fox', 'crow', 'lynx', 'pike',
-    'bear', 'kite', 'moth', 'rook', 'veil', 'mist',
+    'hawk',
+    'wolf',
+    'fox',
+    'crow',
+    'lynx',
+    'pike',
+    'bear',
+    'kite',
+    'moth',
+    'rook',
+    'veil',
+    'mist',
   ];
 
   @override
