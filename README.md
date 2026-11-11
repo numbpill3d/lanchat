@@ -8,6 +8,12 @@ LanChat is a Flutter app for **Linux, macOS, Windows, Android, and iOS**.
 Messages and images stay on the local network and disappear when you close
 the app.
 
+## Screenshots
+
+![LanChat nickname screen](docs/nickname-screen.svg)
+
+![LanChat chat screen](docs/chat-screen.svg)
+
 ## Highlights
 
 - **mDNS peer discovery** via `bonsoir` — every peer is auto-detected on the

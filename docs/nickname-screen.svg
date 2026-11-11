@@ -1,0 +1,29 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="960" height="720" viewBox="0 0 960 720">
+  <rect width="960" height="720" fill="#080808"/>
+  <rect x="1" y="1" width="958" height="718" fill="none" stroke="#3b1616" stroke-width="2"/>
+  <g stroke="#241010" stroke-width="1" opacity=".8"><path d="M0 42h960M0 45h960M0 48h960M0 51h960M0 54h960"/></g>
+  <rect x="0" y="0" width="960" height="54" fill="none" stroke="#703030"/>
+  <rect x="22" y="19" width="16" height="16" fill="#080808" stroke="#c94343"/>
+  <path d="M26 23l8 8M34 23l-8 8" stroke="#c94343" stroke-width="2"/>
+  <text x="480" y="35" fill="#f0dede" text-anchor="middle" font-family="monospace" font-size="18" font-weight="700" letter-spacing="7">LANCHAT</text>
+  <g transform="translate(280 150)" font-family="monospace">
+    <text x="0" y="0" fill="#e34b4b" font-size="46" font-weight="900" letter-spacing="10">LANCHAT</text>
+    <rect x="0" y="26" width="370" height="2" fill="#7b3030"/>
+    <text x="0" y="55" fill="#806b6b" font-size="13" letter-spacing="2">LOCAL AREA TRANSPORT / V1.0</text>
+    <g font-size="15">
+      <text x="0" y="125" fill="#c94343">&gt;</text><text x="25" y="125" fill="#9b8787">local node</text><text x="190" y="125" fill="#62c47a">............. ok</text>
+      <text x="0" y="153" fill="#c94343">&gt;</text><text x="25" y="153" fill="#9b8787">mdns discovery</text><text x="190" y="153" fill="#62c47a">........ ready</text>
+      <text x="0" y="181" fill="#c94343">&gt;</text><text x="25" y="181" fill="#9b8787">ws transport</text><text x="190" y="181" fill="#62c47a">......... ready</text>
+      <text x="0" y="209" fill="#c94343">&gt;</text><text x="25" y="209" fill="#9b8787">accounts</text><text x="190" y="209" fill="#62c47a">........... none</text>
+    </g>
+    <line x1="0" y1="270" x2="400" y2="270" stroke="#7b3030"/>
+    <text x="0" y="302" fill="#806b6b" font-size="13" letter-spacing="3">IDENTITY</text>
+    <text x="0" y="340" fill="#9b8787" font-size="13" letter-spacing="2">NICKNAME</text>
+    <rect x="0" y="357" width="400" height="50" fill="#171111" stroke="#7b3030"/>
+    <text x="16" y="390" fill="#e34b4b" font-size="20">@</text><text x="48" y="390" fill="#f0dede" font-size="17">swift_wolf</text>
+    <rect x="0" y="432" width="400" height="52" fill="#080808" stroke="#e34b4b"/>
+    <text x="200" y="465" fill="#e34b4b" text-anchor="middle" font-size="16" font-weight="700" letter-spacing="4">JOIN</text>
+    <text x="0" y="530" fill="#806b6b" font-size="13">no account. no internet. no server.</text>
+    <text x="0" y="552" fill="#806b6b" font-size="13">everyone on this Wi-Fi finds you automatically.</text>
+  </g>
+</svg>
