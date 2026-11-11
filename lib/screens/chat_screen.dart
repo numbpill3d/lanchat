@@ -217,6 +217,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     _StatusStrip(
                       nickname: service.nickname ?? '?',
                       peerCount: service.peerCount,
+                      startupWarning: service.startupWarning,
                     ),
                     Expanded(
                       child: LayoutBuilder(
@@ -285,12 +286,18 @@ class _ChatScreenState extends State<ChatScreen> {
 class _StatusStrip extends StatelessWidget {
   final String nickname;
   final int peerCount;
+  final String? startupWarning;
 
-  const _StatusStrip({required this.nickname, required this.peerCount});
+  const _StatusStrip({
+    required this.nickname,
+    required this.peerCount,
+    this.startupWarning,
+  });
 
   @override
   Widget build(BuildContext context) {
     final live = peerCount > 0;
+    final discoveryOffline = startupWarning != null;
     return Container(
       height: 22,
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -313,11 +320,17 @@ class _StatusStrip extends StatelessWidget {
           _CarrierLamp(live: live),
           const SizedBox(width: 7),
           Text(
-            live
-                ? '${peerCount.toString().padLeft(2, '0')} NODES'
-                : 'NO CARRIER',
+            discoveryOffline
+                ? 'DISCOVERY OFFLINE'
+                : live
+                    ? '${peerCount.toString().padLeft(2, '0')} NODES'
+                    : 'NO CARRIER',
             style: Retro.label(
-              color: live ? Retro.live : Retro.inkFaint,
+              color: discoveryOffline
+                  ? Retro.accent
+                  : live
+                      ? Retro.live
+                      : Retro.inkFaint,
               size: 9,
             ),
           ),

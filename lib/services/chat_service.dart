@@ -38,6 +38,7 @@ class ChatService extends ChangeNotifier {
   final List<String> _processedIdOrder = [];
   final Set<String> _connectingPeers = {};
   bool _disposed = false;
+  String? _startupWarning;
 
   List<Message> get messages => List.unmodifiable(_messages);
   Map<String, Peer> get peers => Map.unmodifiable(_peers);
@@ -45,6 +46,7 @@ class ChatService extends ChangeNotifier {
   String get deviceId => _deviceId;
   int get peerCount => _peers.length;
   bool get isRunning => _httpServer != null;
+  String? get startupWarning => _startupWarning;
 
   Future<void> start(String nickname) async {
     if (isRunning) return;
@@ -55,8 +57,21 @@ class ChatService extends ChangeNotifier {
     _nickname = cleaned;
     try {
       await _startServer();
-      await _startBroadcast();
-      await _startDiscovery();
+      _startupWarning = null;
+      try {
+        await _startBroadcast();
+        await _startDiscovery();
+      } catch (error) {
+        // mDNS is optional for the local server. Linux installations without
+        // a running Avahi daemon can still open the chat and recover once the
+        // service is available again.
+        _startupWarning =
+            'mDNS discovery is unavailable. The local chat server is running, '
+            'but peers cannot be found automatically.';
+        debugPrint('lanchat: mDNS startup failed: $error');
+        await _stopDiscoveryServices();
+      }
+      _notifyChanged();
     } catch (_) {
       await stop();
       rethrow;
@@ -316,10 +331,7 @@ class ChatService extends ChangeNotifier {
       ));
     }
 
-    await _discoverySubscription?.cancel();
-    _discoverySubscription = null;
-    await _bonsoirDiscovery?.stop();
-    await _bonsoirBroadcast?.stop();
+    await _stopDiscoveryServices();
 
     final allChannels = [
       ..._serverChannels.values,
@@ -340,6 +352,7 @@ class ChatService extends ChangeNotifier {
     _connectingPeers.clear();
     _httpServer = null;
     _nickname = null;
+    _startupWarning = null;
 
     _notifyChanged();
   }
@@ -353,6 +366,19 @@ class ChatService extends ChangeNotifier {
 
   void _notifyChanged() {
     if (!_disposed) notifyListeners();
+  }
+
+  Future<void> _stopDiscoveryServices() async {
+    await _discoverySubscription?.cancel();
+    _discoverySubscription = null;
+    try {
+      await _bonsoirDiscovery?.stop();
+    } catch (_) {}
+    try {
+      await _bonsoirBroadcast?.stop();
+    } catch (_) {}
+    _bonsoirDiscovery = null;
+    _bonsoirBroadcast = null;
   }
 
   void _removePeer(String peerId) {
