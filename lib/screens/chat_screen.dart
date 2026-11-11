@@ -2,6 +2,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/message.dart';
 import '../services/chat_service.dart';
 import '../theme/retro.dart';
 import '../widgets/gutters.dart';
@@ -60,14 +61,30 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _pickImage() async {
-    final result = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-      withData: true,
-    );
+    FilePickerResult? result;
+    try {
+      result = await FilePicker.platform.pickFiles(
+        type: FileType.image,
+        withData: true,
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('could not open image picker: $e')),
+        );
+      }
+      return;
+    }
     if (result == null || result.files.isEmpty) return;
     final file = result.files.first;
     final bytes = file.bytes;
     if (bytes == null || !mounted) return;
+    if (bytes.length > 6 * 1024 * 1024) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('images must be smaller than 6 MB')),
+      );
+      return;
+    }
 
     final name = file.name.toLowerCase();
     final mime = name.endsWith('.png')
@@ -461,6 +478,7 @@ class _InputBar extends StatelessWidget {
                       focusNode: focusNode,
                       minLines: 1,
                       maxLines: 5,
+                      maxLength: Message.maxTextLength,
                       cursorWidth: 7,
                       cursorRadius: Radius.zero,
                       cursorColor: Retro.accent,

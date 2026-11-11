@@ -67,7 +67,12 @@ class _NicknameScreenState extends State<NicknameScreen> {
 
   Future<void> _join() async {
     final nick = _controller.text.trim();
-    if (nick.isEmpty) return;
+    if (nick.isEmpty || nick.length > 24) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('nickname must be 1–24 characters')),
+      );
+      return;
+    }
     setState(() => _loading = true);
     try {
       await context.read<ChatService>().start(nick);

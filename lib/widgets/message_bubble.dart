@@ -61,7 +61,10 @@ class MessageBubble extends StatelessWidget {
                           style: Retro.text(size: 12, color: nickColor),
                         ),
                         const SizedBox(height: 5),
-                        _ImageFrame(base64data: message.content),
+                        _ImageFrame(
+                          base64data: message.content,
+                          mimeType: message.mimeType,
+                        ),
                       ],
                     )
                   : RichText(
@@ -142,7 +145,8 @@ class _SystemLine extends StatelessWidget {
 /// Images sit in a hairline frame with a caption bar, like a dumped file.
 class _ImageFrame extends StatelessWidget {
   final String base64data;
-  const _ImageFrame({required this.base64data});
+  final String? mimeType;
+  const _ImageFrame({required this.base64data, this.mimeType});
 
   @override
   Widget build(BuildContext context) {
@@ -157,11 +161,24 @@ class _ImageFrame extends StatelessWidget {
       constraints: const BoxConstraints(maxWidth: 260, maxHeight: 240),
       decoration: const BoxDecoration(border: Retro.box),
       padding: const EdgeInsets.all(3),
-      child: Image.memory(
-        bytes,
-        fit: BoxFit.contain,
-        gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => const _ImageError(),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Image.memory(
+            bytes,
+            fit: BoxFit.contain,
+            gaplessPlayback: true,
+            errorBuilder: (_, __, ___) => const _ImageError(),
+          ),
+          if (mimeType != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 3, left: 2),
+              child: Text(
+                mimeType!,
+                style: Retro.text(size: 9, color: Retro.inkFaint),
+              ),
+            ),
+        ],
       ),
     );
   }

@@ -3,6 +3,9 @@ import 'package:uuid/uuid.dart';
 enum MessageType { text, image, join, leave }
 
 class Message {
+  static const maxTextLength = 16 * 1024;
+  static const maxImagePayloadLength = 8 * 1024 * 1024;
+
   final String id;
   final MessageType type;
   final String senderNickname;
@@ -32,16 +35,40 @@ class Message {
         'timestamp': timestamp.millisecondsSinceEpoch,
       };
 
-  factory Message.fromJson(Map<String, dynamic> json) => Message(
-        id: json['id'] as String,
-        type: MessageType.values.firstWhere(
-          (t) => t.name == json['type'],
-          orElse: () => MessageType.text,
-        ),
-        senderNickname: json['senderNickname'] as String,
-        senderId: json['senderId'] as String,
-        content: json['content'] as String,
-        mimeType: json['mimeType'] as String?,
-        timestamp: DateTime.fromMillisecondsSinceEpoch(json['timestamp'] as int),
-      );
+  factory Message.fromJson(Map<String, dynamic> json) {
+    String requiredString(String key) {
+      final value = json[key];
+      if (value is! String || value.trim().isEmpty) {
+        throw FormatException('message field "$key" is invalid');
+      }
+      return value;
+    }
+
+    final content = requiredString('content');
+    final typeName = json['type'];
+    final type = MessageType.values.firstWhere(
+      (t) => t.name == typeName,
+      orElse: () => MessageType.text,
+    );
+    final timestamp = json['timestamp'];
+    if (timestamp is! int) {
+      throw const FormatException('message timestamp is invalid');
+    }
+    if (content.length >
+        (type == MessageType.image
+            ? maxImagePayloadLength
+            : maxTextLength)) {
+      throw const FormatException('message content is too large');
+    }
+
+    return Message(
+      id: requiredString('id'),
+      type: type,
+      senderNickname: requiredString('senderNickname'),
+      senderId: requiredString('senderId'),
+      content: content,
+      mimeType: json['mimeType'] is String ? json['mimeType'] as String : null,
+      timestamp: DateTime.fromMillisecondsSinceEpoch(timestamp),
+    );
+  }
 }

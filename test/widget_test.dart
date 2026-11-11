@@ -66,6 +66,34 @@ void main() {
       expect(msg.mimeType, isNull);
     });
 
+    test('rejects malformed messages with a format error', () {
+      expect(
+        () => Message.fromJson({
+          'id': 'abc',
+          'type': 'text',
+          'senderNickname': 'x',
+          'senderId': 'y',
+          'content': 42,
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        }),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
+    test('rejects oversized text payloads', () {
+      expect(
+        () => Message.fromJson({
+          'id': 'abc',
+          'type': 'text',
+          'senderNickname': 'x',
+          'senderId': 'y',
+          'content': 'x' * (Message.maxTextLength + 1),
+          'timestamp': DateTime.now().millisecondsSinceEpoch,
+        }),
+        throwsA(isA<FormatException>()),
+      );
+    });
+
     test('json is single-line and parseable by the chat service', () {
       final msg = Message(
         type: MessageType.join,
