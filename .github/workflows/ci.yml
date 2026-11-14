@@ -86,10 +86,8 @@ jobs:
         with:
           channel: stable
           cache: true
-          java-version: '17'
 
       - name: Decode Android signing key
-        if: ${{ secrets.LANCHAT_KEYSTORE_BASE64 != '' }}
         env:
           KEYSTORE_BASE64: ${{ secrets.LANCHAT_KEYSTORE_BASE64 }}
           KEYSTORE_PASSWORD: ${{ secrets.LANCHAT_KEYSTORE_PASSWORD }}
