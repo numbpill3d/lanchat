@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:lanchat/models/distributed_execution_plan.dart';
 import 'package:lanchat/services/inference_service.dart';
 
 void main() {
@@ -58,5 +59,24 @@ void main() {
 
     expect(result, contains('/tmp/worker.gguf'));
     expect(result, isNot(contains('No cloud connection')));
+  });
+
+  test('llama.cpp CLI adds RPC and tensor split arguments', () {
+    const plan = DistributedExecutionPlan(
+      rpcEndpoints: ['10.0.0.2:50052', '10.0.0.3:50052'],
+      tensorSplit: [0.25, 0.75],
+    );
+    final args = LlamaCliAdapter.buildArguments(
+      prompt: 'hello',
+      modelPath: '/tmp/model.gguf',
+      executionPlan: plan,
+    );
+
+    expect(args, contains('--rpc'));
+    expect(args, contains('10.0.0.2:50052,10.0.0.3:50052'));
+    expect(args, contains('--tensor-split'));
+    expect(args, contains('0.25,0.75'));
+    expect(args, contains('--split-mode'));
+    expect(args, contains('layer'));
   });
 }

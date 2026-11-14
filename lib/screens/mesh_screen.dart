@@ -10,6 +10,7 @@ import '../models/node_capability.dart';
 import '../models/peer.dart';
 import '../services/chat_service.dart';
 import '../services/inference_service.dart';
+import '../services/rpc_worker_service.dart';
 
 const _bg = Color(0xffd9dde0);
 const _surface = Color(0xffe5e8ea);
@@ -32,6 +33,7 @@ class _MeshScreenState extends State<MeshScreen> {
   final _scroll = ScrollController();
   late final InferenceService _inference;
   late final Future<RuntimeStatus> _nativeRuntimeStatus;
+  final RpcWorkerService _rpcWorker = RpcWorkerService();
   String? _answer;
   bool _active = false;
   bool _thinking = false;
@@ -54,6 +56,7 @@ class _MeshScreenState extends State<MeshScreen> {
     _prompt.dispose();
     _scroll.dispose();
     unawaited(_inference.dispose());
+    unawaited(_rpcWorker.stop());
     super.dispose();
   }
 
@@ -71,6 +74,43 @@ class _MeshScreenState extends State<MeshScreen> {
     final service = context.read<ChatService>();
     service.registerLocalHealth(status.batteryPercent, status.thermalState);
     service.registerLocalRuntime(status.available);
+    final rpcAvailable = await _rpcWorker.isAvailable();
+    if (!rpcAvailable || !mounted) {
+      service.registerLocalDistributedRuntime(available: false);
+      return;
+    }
+    try {
+      final address = await _localIpv4Address();
+      if (address == null) {
+        service.registerLocalDistributedRuntime(available: false);
+        return;
+      }
+      final endpoint = await _rpcWorker.start(
+        advertisedHost: address,
+      );
+      service.registerLocalDistributedRuntime(
+        available: true,
+        rpcEndpoint: endpoint,
+        tensorMemoryGb: service.localCapability.memoryGb,
+      );
+    } on Object {
+      service.registerLocalDistributedRuntime(available: false);
+    }
+  }
+
+  Future<String?> _localIpv4Address() async {
+    try {
+      final interfaces = await NetworkInterface.list(
+          type: InternetAddressType.IPv4, includeLoopback: false);
+      for (final interface in interfaces) {
+        for (final address in interface.addresses) {
+          if (!address.isLoopback) return address.address;
+        }
+      }
+    } on Object {
+      // Some platforms do not expose interface enumeration to the app.
+    }
+    return null;
   }
 
   Future<RuntimeStatus> _loadRuntimeStatus() async {

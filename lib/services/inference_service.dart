@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:uuid/uuid.dart';
 
 import '../models/inference_envelope.dart';
+import '../models/distributed_execution_plan.dart';
 import '../models/message.dart';
 import '../models/node_capability.dart';
 import 'chat_service.dart';
@@ -22,7 +23,9 @@ class InferenceResult {
 abstract interface class LocalModelAdapter {
   String get modelName;
   Future<String> generate(String prompt,
-      {required void Function(String chunk) onChunk, String? modelPath});
+      {required void Function(String chunk) onChunk,
+      String? modelPath,
+      DistributedExecutionPlan? executionPlan});
 }
 
 /// Honest fallback used until a platform-native GGUF/MLX adapter is linked.
@@ -33,7 +36,9 @@ class OfflineFallbackAdapter implements LocalModelAdapter {
 
   @override
   Future<String> generate(String prompt,
-      {required void Function(String chunk) onChunk, String? modelPath}) async {
+      {required void Function(String chunk) onChunk,
+      String? modelPath,
+      DistributedExecutionPlan? executionPlan}) async {
     const chunks = [
       'The local pool received your request. ',
       'No cloud connection was used. ',
@@ -78,7 +83,9 @@ class NativeInferenceAdapter implements LocalModelAdapter {
 
   @override
   Future<String> generate(String prompt,
-      {required void Function(String chunk) onChunk, String? modelPath}) async {
+      {required void Function(String chunk) onChunk,
+      String? modelPath,
+      DistributedExecutionPlan? executionPlan}) async {
     final result = await _channel.invokeMethod<String>('generate', {
       'prompt': prompt,
       if (modelPath != null) 'modelPath': modelPath,
@@ -116,19 +123,19 @@ class LlamaCliAdapter implements LocalModelAdapter {
 
   @override
   Future<String> generate(String prompt,
-      {required void Function(String chunk) onChunk, String? modelPath}) async {
+      {required void Function(String chunk) onChunk,
+      String? modelPath,
+      DistributedExecutionPlan? executionPlan}) async {
     if (modelPath == null || modelPath.isEmpty) {
       throw StateError('no local model file has been imported');
     }
-    final process = await Process.start(executable, [
-      '-m',
-      modelPath,
-      '-p',
-      prompt,
-      '-n',
-      '256',
-      '--no-display-prompt',
-    ]);
+    final process = await Process.start(
+        executable,
+        buildArguments(
+          prompt: prompt,
+          modelPath: modelPath,
+          executionPlan: executionPlan,
+        ));
     final output = StringBuffer();
     final stdoutFuture =
         process.stdout.transform(utf8.decoder).forEach((chunk) {
@@ -150,6 +157,33 @@ class LlamaCliAdapter implements LocalModelAdapter {
     final result = output.toString();
     if (result.isEmpty) throw StateError('llama.cpp worker returned no output');
     return result;
+  }
+
+  static List<String> buildArguments({
+    required String prompt,
+    required String? modelPath,
+    DistributedExecutionPlan? executionPlan,
+  }) {
+    if (modelPath == null || modelPath.isEmpty) {
+      throw StateError('no local model file has been imported');
+    }
+    return [
+      '-m',
+      modelPath,
+      '-p',
+      prompt,
+      '-n',
+      '256',
+      '--no-display-prompt',
+      if (executionPlan?.isDistributed == true) ...[
+        '--rpc',
+        executionPlan!.rpcEndpoints.join(','),
+        '--tensor-split',
+        executionPlan.tensorSplit.map((value) => value.toString()).join(','),
+        '--split-mode',
+        executionPlan.splitMode,
+      ],
+    ];
   }
 }
 
@@ -201,44 +235,51 @@ class NativeFirstAdapter implements LocalModelAdapter {
 
   @override
   Future<String> generate(String prompt,
-      {required void Function(String chunk) onChunk, String? modelPath}) async {
+      {required void Function(String chunk) onChunk,
+      String? modelPath,
+      DistributedExecutionPlan? executionPlan}) async {
     try {
       return await native.generate(prompt,
-          onChunk: onChunk, modelPath: modelPath);
+          onChunk: onChunk, modelPath: modelPath, executionPlan: executionPlan);
     } on MissingPluginException {
-      return _tryCli(prompt, onChunk, modelPath);
+      return _tryCli(prompt, onChunk, modelPath, executionPlan);
     } on PlatformException {
-      return _tryCli(prompt, onChunk, modelPath);
+      return _tryCli(prompt, onChunk, modelPath, executionPlan);
     } on StateError {
-      return _tryCli(prompt, onChunk, modelPath);
+      return _tryCli(prompt, onChunk, modelPath, executionPlan);
     } on FlutterError {
-      return _tryCli(prompt, onChunk, modelPath);
+      return _tryCli(prompt, onChunk, modelPath, executionPlan);
     }
   }
 
-  Future<String> _tryCli(
-      String prompt, void Function(String) onChunk, String? modelPath) async {
+  Future<String> _tryCli(String prompt, void Function(String) onChunk,
+      String? modelPath, DistributedExecutionPlan? executionPlan) async {
     if (modelPath != null && await cli.isAvailable()) {
       try {
         return await cli.generate(prompt,
-            onChunk: onChunk, modelPath: modelPath);
+            onChunk: onChunk,
+            modelPath: modelPath,
+            executionPlan: executionPlan);
       } on Object {
         // A broken or incompatible local binary should not strand the UI.
       }
     }
-    return fallback.generate(prompt, onChunk: onChunk, modelPath: modelPath);
+    return fallback.generate(prompt,
+        onChunk: onChunk, modelPath: modelPath, executionPlan: executionPlan);
   }
 }
 
 class _PendingRequest {
   final String route;
   final String nodeName;
+  final String? modelName;
   final StringBuffer output;
   final Completer<InferenceResult> completer;
   final void Function(String chunk) onChunk;
   _PendingRequest(
       {required this.route,
       required this.nodeName,
+      this.modelName,
       required this.output,
       required this.completer,
       required this.onChunk});
@@ -263,7 +304,8 @@ class InferenceService {
     _events = null;
   }
 
-  NodeCapability? _bestWorker() {
+  NodeCapability? _bestWorker(
+      DistributedExecutionPlan? executionPlan, String? modelName) {
     final workers = mesh.capabilities.values
         .where((capability) => capability.nodeId != mesh.deviceId);
     final eligible = <NodeCapability>[];
@@ -273,8 +315,12 @@ class InferenceService {
       final tooLow =
           worker.batteryPercent != null && worker.batteryPercent! < 15;
       if (tooHot || tooLow) continue;
-      if (worker.features.contains('text-generation') &&
-          worker.models.isNotEmpty) {
+      final distributedEligible = executionPlan == null ||
+          worker.features.contains('distributed-entrypoint');
+      if (distributedEligible &&
+          worker.features.contains('text-generation') &&
+          worker.models.isNotEmpty &&
+          (modelName == null || worker.models.contains(modelName))) {
         eligible.add(worker);
       }
     }
@@ -297,16 +343,22 @@ class InferenceService {
   }
 
   Future<InferenceResult> generate(String prompt,
-      {required void Function(String chunk) onChunk}) async {
+      {required void Function(String chunk) onChunk, String? modelName}) async {
     enableWorker();
-    final worker = _bestWorker();
+    final executionPlan = DistributedExecutionPlan.fromCapabilities(
+      mesh.capabilities.values
+          .where((capability) => capability.nodeId != mesh.deviceId),
+    );
+    final worker = _bestWorker(executionPlan, modelName);
     if (worker == null) {
       const route = 'LOCAL FALLBACK';
       const nodeName = 'iphone_coordinator';
       const prefix = 'ROUTE  $route  ·  $nodeName\n\n';
       onChunk(prefix);
       final body = await fallback.generate(prompt,
-          onChunk: onChunk, modelPath: mesh.preferredLocalModelPath);
+          onChunk: onChunk,
+          modelPath: mesh.localModelPath(modelName),
+          executionPlan: executionPlan);
       return InferenceResult(
           route: route, nodeName: nodeName, text: '$prefix$body');
     }
@@ -318,6 +370,7 @@ class InferenceService {
     final pending = _PendingRequest(
         route: route,
         nodeName: worker.displayName,
+        modelName: modelName,
         output: StringBuffer(prefix),
         completer: completer,
         onChunk: onChunk);
@@ -327,7 +380,9 @@ class InferenceService {
         type: MessageType.inferenceRequest,
         requestId: requestId,
         targetId: worker.nodeId,
-        prompt: prompt));
+        prompt: prompt,
+        modelName: modelName,
+        executionPlan: executionPlan));
 
     try {
       return await completer.future.timeout(const Duration(seconds: 20));
@@ -359,7 +414,9 @@ class InferenceService {
     final message = '\n$reason  ·  RETRYING ON IPHONE FALLBACK\n\n';
     onChunk(message);
     final body = await fallback.generate(prompt,
-        onChunk: onChunk, modelPath: mesh.preferredLocalModelPath);
+        onChunk: onChunk,
+        modelPath: mesh.localModelPath(pending.modelName),
+        executionPlan: null);
     return InferenceResult(
       route: '$reason / LOCAL RETRY',
       nodeName: pending.nodeName,
@@ -398,7 +455,8 @@ class InferenceService {
   Future<void> _serve(InferenceEnvelope event) async {
     try {
       await fallback.generate(event.prompt!,
-          modelPath: mesh.preferredLocalModelPath, onChunk: (chunk) {
+          modelPath: mesh.localModelPath(event.modelName),
+          executionPlan: event.executionPlan, onChunk: (chunk) {
         mesh.sendInference(InferenceEnvelope(
             type: MessageType.inferenceChunk,
             requestId: event.requestId,

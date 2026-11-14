@@ -20,6 +20,11 @@ The current UI is the pale-metal control-panel dashboard in
   thermal state, and supported features.
 - **Targeted streaming inference** — the coordinator routes a prompt to the
   best available worker and falls back locally if it disappears.
+- **Distributed tensor offload** — desktop-class workers with a current
+  `ggml-rpc-server` can expose CPU/GPU memory to a coordinator, which builds a
+  memory-weighted `--rpc` / `--tensor-split` plan for one model across nodes.
+- **Multi-model routing** — requests may name a model; capability discovery
+  prevents a worker from receiving a model it does not advertise.
 - **Model Bay** — import GGUF files from Files or a LAN
   share; MeshMind copies them into its local app-support model directory.
 - **Legacy-worker support** — a laptop with `llama-cli` installed can run a
@@ -44,6 +49,14 @@ the GTK application to work. To make a Linux/macOS/Windows laptop a real GGUF
 worker, install `llama-cli` from llama.cpp, launch MeshMind, and import the
 model in Model Bay. The adapter streams the local process output and never
 sends the model to a cloud service.
+
+For distributed execution, install matching current llama.cpp binaries that
+include both `llama-cli` and `ggml-rpc-server` with RPC enabled. MeshMind starts
+the RPC worker on the LAN when available and advertises its endpoint. This is
+an experimental llama.cpp proof-of-concept path: keep it on a trusted LAN or
+VPN because the raw RPC port is not encrypted. The older pinned iOS runtime is
+still a local single-device backend; iOS can coordinate desktop RPC workers
+but does not launch a desktop RPC process itself.
 
 ### Build from source
 
@@ -112,10 +125,12 @@ lib/
     message.dart         # Mesh message envelope and message types
     inference_envelope.dart
     node_capability.dart # Worker capability handshake
+    distributed_execution_plan.dart # Heterogeneous RPC/tensor placement
     local_model.dart     # Imported model metadata and executable path
   services/
     chat_service.dart    # Server, discovery, capability and mesh transport
     inference_service.dart # Routing, streaming, native and llama-cli adapters
+    rpc_worker_service.dart # Optional desktop ggml-rpc-server lifecycle
   screens/
     mesh_screen.dart     # Pool, nodes, prompt router and Model Bay
 test/

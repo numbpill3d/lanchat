@@ -9,6 +9,9 @@ class NodeCapability {
   final List<String> features;
   final int? batteryPercent;
   final String thermalState;
+  final String? rpcEndpoint;
+  final int? tensorMemoryGb;
+  final bool supportsTensorSplit;
 
   const NodeCapability({
     required this.nodeId,
@@ -19,6 +22,9 @@ class NodeCapability {
     required this.features,
     this.batteryPercent,
     this.thermalState = 'unknown',
+    this.rpcEndpoint,
+    this.tensorMemoryGb,
+    this.supportsTensorSplit = false,
   });
 
   Map<String, dynamic> toJson() => {
@@ -30,6 +36,9 @@ class NodeCapability {
         'features': features,
         if (batteryPercent != null) 'batteryPercent': batteryPercent,
         'thermalState': thermalState,
+        if (rpcEndpoint != null) 'rpcEndpoint': rpcEndpoint,
+        if (tensorMemoryGb != null) 'tensorMemoryGb': tensorMemoryGb,
+        'supportsTensorSplit': supportsTensorSplit,
       };
 
   String encode() => jsonEncode(toJson());
@@ -64,6 +73,12 @@ class NodeCapability {
       thermalState: json['thermalState'] is String
           ? json['thermalState'] as String
           : 'unknown',
+      rpcEndpoint:
+          json['rpcEndpoint'] is String ? json['rpcEndpoint'] as String : null,
+      tensorMemoryGb: json['tensorMemoryGb'] is num
+          ? (json['tensorMemoryGb'] as num).round()
+          : null,
+      supportsTensorSplit: json['supportsTensorSplit'] == true,
     );
   }
 

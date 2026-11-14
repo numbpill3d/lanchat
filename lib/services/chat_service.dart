@@ -45,6 +45,9 @@ class ChatService extends ChangeNotifier {
   int? _batteryPercent;
   String _thermalState = 'unknown';
   bool _runtimeAvailable = false;
+  String? _rpcEndpoint;
+  int? _tensorMemoryGb;
+  bool _supportsTensorSplit = false;
   final StreamController<InferenceEnvelope> _inferenceEvents =
       StreamController<InferenceEnvelope>.broadcast();
   final Set<String> _processedIds = {};
@@ -72,6 +75,13 @@ class ChatService extends ChangeNotifier {
       .firstWhere((path) => path != null && path.isNotEmpty,
           orElse: () => null);
 
+  String? localModelPath(String? modelName) {
+    if (modelName == null || modelName.isEmpty) {
+      return preferredLocalModelPath;
+    }
+    return _localModelFiles[modelName]?.path;
+  }
+
   NodeCapability get localCapability => NodeCapability(
         nodeId: _deviceId,
         displayName: _nickname ?? 'iphone_coordinator',
@@ -80,11 +90,16 @@ class ChatService extends ChangeNotifier {
         models: List.unmodifiable(_localModels),
         features: [
           if (_runtimeAvailable && _localModels.isNotEmpty) 'text-generation',
+          if (_supportsTensorSplit) 'distributed-entrypoint',
+          if (_supportsTensorSplit) 'tensor-offload',
           'offline',
           'lan-routing',
         ],
         batteryPercent: _batteryPercent,
         thermalState: _thermalState,
+        rpcEndpoint: _rpcEndpoint,
+        tensorMemoryGb: _tensorMemoryGb,
+        supportsTensorSplit: _supportsTensorSplit,
       );
 
   Future<void> start(String nickname) async {
@@ -140,6 +155,22 @@ class ChatService extends ChangeNotifier {
 
   void registerLocalRuntime(bool available) {
     _runtimeAvailable = available;
+    _capabilities[_deviceId] = localCapability;
+    if (isRunning) _broadcastMessage(_capabilityMessage());
+    _notifyChanged();
+  }
+
+  /// Advertises this node as a llama.cpp RPC host. The endpoint is intentionally
+  /// explicit: raw llama.cpp RPC is not encrypted, so callers should only use a
+  /// trusted LAN/VPN and should never publish it to the open internet.
+  void registerLocalDistributedRuntime({
+    required bool available,
+    String? rpcEndpoint,
+    int? tensorMemoryGb,
+  }) {
+    _supportsTensorSplit = available && rpcEndpoint != null;
+    _rpcEndpoint = _supportsTensorSplit ? rpcEndpoint : null;
+    _tensorMemoryGb = _supportsTensorSplit ? tensorMemoryGb : null;
     _capabilities[_deviceId] = localCapability;
     if (isRunning) _broadcastMessage(_capabilityMessage());
     _notifyChanged();
@@ -538,6 +569,9 @@ class ChatService extends ChangeNotifier {
     _httpServer = null;
     _nickname = null;
     _startupWarning = null;
+    _rpcEndpoint = null;
+    _tensorMemoryGb = null;
+    _supportsTensorSplit = false;
 
     _notifyChanged();
   }
