@@ -22,7 +22,8 @@ The current UI is the pale-metal control-panel dashboard in
   best available worker and falls back locally if it disappears.
 - **Distributed tensor offload** — desktop-class workers with a current
   `ggml-rpc-server` can expose CPU/GPU memory to a coordinator, which builds a
-  memory-weighted `--rpc` / `--tensor-split` plan for one model across nodes.
+  `--rpc` plan for one model across nodes; llama.cpp sizes placement from the
+  actual free memory of local and remote devices.
 - **Multi-model routing** — requests may name a model; capability discovery
   prevents a worker from receiving a model it does not advertise.
 - **Model Bay** — import GGUF files from Files or a LAN
@@ -46,12 +47,14 @@ The current UI is the pale-metal control-panel dashboard in
 
 On Linux you also need `avahi` and `gtk3` available on the system for mDNS and
 the GTK application to work. To make a Linux/macOS/Windows laptop a real GGUF
-worker, install `llama-cli` from llama.cpp, launch MeshMind, and import the
-model in Model Bay. The adapter streams the local process output and never
-sends the model to a cloud service.
+worker, install the llama.cpp completion binary (`llama-cli` on packaged
+releases or `llama-completion` from current source), launch MeshMind, and
+import the model in Model Bay. The adapter streams the local process output
+and never sends the model to a cloud service.
 
 For distributed execution, install matching current llama.cpp binaries that
-include both `llama-cli` and `ggml-rpc-server` with RPC enabled. MeshMind starts
+include a completion binary (`llama-cli` or `llama-completion`) and
+`ggml-rpc-server` with RPC enabled. MeshMind starts
 the RPC worker on the LAN when available and advertises its endpoint. This is
 an experimental llama.cpp proof-of-concept path: keep it on a trusted LAN or
 VPN because the raw RPC port is not encrypted. The older pinned iOS runtime is
@@ -105,6 +108,8 @@ Closing the app stops the server, shuts down mDNS, and broadcasts a
 - WebSocket traffic is on the chosen port in `5700-5800`. Make sure your
   host firewall allows inbound TCP on this range if you want other peers to
   reach you.
+- Distributed RPC uses TCP port `50052` by default. Only allow it from the
+  trusted local subnet or VPN; do not port-forward it.
 
 ## Configuration
 

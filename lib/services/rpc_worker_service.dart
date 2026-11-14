@@ -40,9 +40,21 @@ class RpcWorkerService {
       host,
       '-p',
       '$port',
+      '--cache',
     ]);
     _process = process;
     _endpoint = '${advertisedHost ?? host}:$port';
+    unawaited(process.stdout.drain<void>());
+    unawaited(process.stderr.drain<void>());
+    final startupResult = await Future.any<dynamic>([
+      process.exitCode,
+      Future<void>.delayed(const Duration(milliseconds: 250)),
+    ]);
+    if (startupResult is int) {
+      _process = null;
+      _endpoint = null;
+      throw StateError('$executable exited during startup ($startupResult)');
+    }
     process.exitCode.then((_) {
       if (identical(_process, process)) {
         _process = null;

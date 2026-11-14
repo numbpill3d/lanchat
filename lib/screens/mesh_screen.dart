@@ -38,6 +38,7 @@ class _MeshScreenState extends State<MeshScreen> {
   bool _active = false;
   bool _thinking = false;
   int _tab = 0;
+  String? _selectedModel;
   String? _importedModel;
   int? _importedBytes;
   bool _importingModel = false;
@@ -74,7 +75,8 @@ class _MeshScreenState extends State<MeshScreen> {
     final service = context.read<ChatService>();
     service.registerLocalHealth(status.batteryPercent, status.thermalState);
     service.registerLocalRuntime(status.available);
-    final rpcAvailable = await _rpcWorker.isAvailable();
+    final rpcAvailable =
+        await _rpcWorker.isAvailable() && await LlamaCliAdapter().supportsRpc();
     if (!rpcAvailable || !mounted) {
       service.registerLocalDistributedRuntime(available: false);
       return;
@@ -116,7 +118,7 @@ class _MeshScreenState extends State<MeshScreen> {
   Future<RuntimeStatus> _loadRuntimeStatus() async {
     final native = await NativeInferenceAdapter().runtimeStatus();
     if (native.available) return native;
-    final cliAvailable = await const LlamaCliAdapter().isAvailable();
+    final cliAvailable = await LlamaCliAdapter().isAvailable();
     if (!cliAvailable) return native;
     return RuntimeStatus(
       available: true,
@@ -177,7 +179,7 @@ class _MeshScreenState extends State<MeshScreen> {
     });
     final service = context.read<ChatService>();
     final output = StringBuffer();
-    _inference.generate(text, onChunk: (chunk) {
+    _inference.generate(text, modelName: _selectedModel, onChunk: (chunk) {
       if (!mounted) return;
       output.write(chunk);
       setState(() => _answer = output.toString());
@@ -213,6 +215,11 @@ class _MeshScreenState extends State<MeshScreen> {
         final readyWorkers = remoteCapabilities
             .where((capability) => capability.models.isNotEmpty)
             .length;
+        final modelOptions = service.capabilities.values
+            .expand((capability) => capability.models)
+            .toSet()
+            .toList()
+          ..sort();
         final poolHealth =
             (0.42 + readyWorkers * 0.16).clamp(0.0, 1.0).toDouble();
         return Scaffold(
@@ -238,12 +245,18 @@ class _MeshScreenState extends State<MeshScreen> {
                             memoryGb: totalMemoryGb,
                             health: poolHealth),
                         const SizedBox(height: 14),
-                        const _SectionTitle('PROMPT ROUTER', 'LOCAL ONLY'),
+                        const _SectionTitle('PROMPT ROUTER', 'PRIVATE MESH'),
                         const SizedBox(height: 8),
                         _PromptPanel(
                             controller: _prompt,
                             thinking: _thinking,
                             answer: _answer,
+                            modelOptions: modelOptions,
+                            selectedModel: modelOptions.contains(_selectedModel)
+                                ? _selectedModel
+                                : null,
+                            onModelChanged: (value) =>
+                                setState(() => _selectedModel = value),
                             onRun: _runPrompt),
                       ] else if (_tab == 1) ...[
                         _SectionTitle(
@@ -424,11 +437,17 @@ class _PromptPanel extends StatelessWidget {
   final TextEditingController controller;
   final bool thinking;
   final String? answer;
+  final List<String> modelOptions;
+  final String? selectedModel;
+  final ValueChanged<String?> onModelChanged;
   final VoidCallback onRun;
   const _PromptPanel(
       {required this.controller,
       required this.thinking,
       required this.answer,
+      required this.modelOptions,
+      required this.selectedModel,
+      required this.onModelChanged,
       required this.onRun});
   @override
   Widget build(BuildContext context) => _Raised(
@@ -447,6 +466,31 @@ class _PromptPanel extends StatelessWidget {
                       hintStyle: TextStyle(color: _muted),
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.all(12)))),
+          const SizedBox(height: 10),
+          Row(children: [
+            const Text('MODEL',
+                style: TextStyle(
+                    color: _muted,
+                    fontSize: 9,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 1.4)),
+            const SizedBox(width: 12),
+            Expanded(
+                child: DropdownButtonHideUnderline(
+                    child: DropdownButton<String>(
+                        isExpanded: true,
+                        value: selectedModel,
+                        hint: const Text('AUTO / BEST FIT',
+                            style: TextStyle(color: _muted, fontSize: 11)),
+                        icon: const Icon(Icons.expand_more, color: _muted),
+                        dropdownColor: _surface,
+                        style: const TextStyle(color: _ink, fontSize: 11),
+                        items: modelOptions
+                            .map((model) => DropdownMenuItem<String>(
+                                value: model, child: Text(model)))
+                            .toList(),
+                        onChanged: onModelChanged))),
+          ]),
           const SizedBox(height: 10),
           _ActionButton(
               label: thinking ? 'ROUTING…' : 'RUN LOCALLY',

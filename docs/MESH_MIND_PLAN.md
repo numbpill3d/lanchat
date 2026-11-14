@@ -72,10 +72,11 @@ clear offline-only boundary.
   llama.cpp runtime.
 - Distributed execution is represented in the protocol. Workers can advertise
   an RPC endpoint, tensor memory, and split support; the coordinator creates a
-  heterogeneous memory-weighted plan and sends it with the request. A
-  distributed entrypoint launches current llama.cpp with `--rpc`,
-  `--tensor-split`, and the safe default `layer` split mode. Model names also
-  travel with requests so a mesh can host and route several models.
+  heterogeneous RPC plan and sends it with the request. The distributed
+  entrypoint lets current llama.cpp weight local and remote devices from
+  actual free memory, using `--rpc` and the safe default `layer` split mode.
+  Model names also travel with requests so a mesh can host and route several
+  models.
 - Desktop nodes with `ggml-rpc-server` available start an optional RPC worker
   and advertise the LAN address. Mobile nodes remain coordinators or local
   workers unless a future mobile-native RPC runtime is bundled.
@@ -113,9 +114,9 @@ runtime is available.
 - Quantized model catalog with download/import from Files or a LAN share.
 - Chunked prompt execution for devices with low RAM.
 - Optional split-prefill/decode routing, with sequential fallback first.
-- Heterogeneous tensor offload through current llama.cpp RPC: memory-weighted
-  layer splitting across CPU/GPU-capable nodes, with a single-worker fallback
-  when RPC is unavailable or a worker is unhealthy.
+- Heterogeneous tensor offload through current llama.cpp RPC: auto-placed layer
+  splitting across CPU/GPU-capable nodes, with a single-worker fallback when
+  RPC is unavailable or a worker is unhealthy.
 
 ### Phase 3 — trust, polish, and ship
 
@@ -143,8 +144,8 @@ runtime is available.
 - iOS background execution and local-network permission can interrupt workers.
 - “Combine many devices” is not automatically faster: network latency and
   model synchronization can erase gains. MeshMind therefore defaults to layer
-  splitting, weights placements by usable tensor memory, and falls back to one
-  worker or the coordinator when distributed RPC is unavailable. Tensor
+  splitting, weights placement by actual usable device memory, and falls back
+  to one worker or the coordinator when distributed RPC is unavailable. Tensor
   parallel mode remains opt-in/experimental.
 - Older devices may not support the same model format or quantization. The
   capability handshake must be stricter than a generic “AI ready” flag.
@@ -155,6 +156,6 @@ runtime is available.
 On two devices on the same Wi-Fi, the iPhone shows the second device as a
 worker, sends it a prompt, receives a streamed answer, and tells the user
 which node handled the request. With two current llama.cpp RPC workers and a
-desktop entrypoint, the request includes a memory-weighted split plan and the
-entrypoint launches one model across both endpoints. If a worker vanishes or
-RPC is unsupported, the prompt retries on one worker or the iPhone.
+desktop entrypoint, the request includes a complete RPC placement plan and the
+entrypoint launches one model across local and remote devices. If a worker
+vanishes or RPC is unsupported, the prompt retries on one worker or the iPhone.

@@ -103,19 +103,51 @@ class NativeInferenceAdapter implements LocalModelAdapter {
 /// cloud dependency: the model path and prompt stay on the local machine.
 class LlamaCliAdapter implements LocalModelAdapter {
   final String executable;
+  String? _resolvedExecutable;
 
-  const LlamaCliAdapter({this.executable = 'llama-cli'});
+  LlamaCliAdapter({this.executable = 'llama-cli'});
 
   @override
   String get modelName => 'llama.cpp-cli';
+
+  Iterable<String> get _candidates => executable == 'llama-cli'
+      ? const ['llama-cli', 'llama-completion']
+      : [executable];
+
+  Future<String?> _resolveExecutable() async {
+    final cached = _resolvedExecutable;
+    if (cached != null) return cached;
+    for (final candidate in _candidates) {
+      try {
+        final result = await Process.run(candidate, const ['--version']);
+        if (result.exitCode == 0) {
+          _resolvedExecutable = candidate;
+          return candidate;
+        }
+      } on Object {
+        // Try the next supported llama.cpp executable name.
+      }
+    }
+    return null;
+  }
 
   Future<bool> isAvailable() async {
     if (!(Platform.isLinux || Platform.isMacOS || Platform.isWindows)) {
       return false;
     }
+    return await _resolveExecutable() != null;
+  }
+
+  Future<bool> supportsRpc() async {
+    if (!(Platform.isLinux || Platform.isMacOS || Platform.isWindows)) {
+      return false;
+    }
+    final command = await _resolveExecutable();
+    if (command == null) return false;
     try {
-      final result = await Process.run(executable, const ['--version']);
-      return result.exitCode == 0;
+      final result = await Process.run(command, const ['--help']);
+      final output = '${result.stdout}\n${result.stderr}';
+      return result.exitCode == 0 && output.contains('--rpc');
     } on Object {
       return false;
     }
@@ -129,8 +161,10 @@ class LlamaCliAdapter implements LocalModelAdapter {
     if (modelPath == null || modelPath.isEmpty) {
       throw StateError('no local model file has been imported');
     }
+    final command = await _resolveExecutable();
+    if (command == null) throw StateError('llama.cpp CLI is not installed');
     final process = await Process.start(
-        executable,
+        command,
         buildArguments(
           prompt: prompt,
           modelPath: modelPath,
@@ -178,8 +212,10 @@ class LlamaCliAdapter implements LocalModelAdapter {
       if (executionPlan?.isDistributed == true) ...[
         '--rpc',
         executionPlan!.rpcEndpoints.join(','),
-        '--tensor-split',
-        executionPlan.tensorSplit.map((value) => value.toString()).join(','),
+        if (executionPlan.tensorSplit != null) ...[
+          '--tensor-split',
+          executionPlan.tensorSplit!.map((value) => value.toString()).join(','),
+        ],
         '--split-mode',
         executionPlan.splitMode,
       ],
@@ -227,7 +263,7 @@ class NativeFirstAdapter implements LocalModelAdapter {
 
   NativeFirstAdapter({NativeInferenceAdapter? native, LlamaCliAdapter? cli})
       : native = native ?? NativeInferenceAdapter(),
-        cli = cli ?? const LlamaCliAdapter(),
+        cli = cli ?? LlamaCliAdapter(),
         fallback = OfflineFallbackAdapter();
 
   @override
@@ -305,7 +341,8 @@ class InferenceService {
   }
 
   NodeCapability? _bestWorker(
-      DistributedExecutionPlan? executionPlan, String? modelName) {
+      DistributedExecutionPlan? executionPlan, String? modelName,
+      {bool requireDistributed = false}) {
     final workers = mesh.capabilities.values
         .where((capability) => capability.nodeId != mesh.deviceId);
     final eligible = <NodeCapability>[];
@@ -315,7 +352,7 @@ class InferenceService {
       final tooLow =
           worker.batteryPercent != null && worker.batteryPercent! < 15;
       if (tooHot || tooLow) continue;
-      final distributedEligible = executionPlan == null ||
+      final distributedEligible = !requireDistributed ||
           worker.features.contains('distributed-entrypoint');
       if (distributedEligible &&
           worker.features.contains('text-generation') &&
@@ -345,11 +382,17 @@ class InferenceService {
   Future<InferenceResult> generate(String prompt,
       {required void Function(String chunk) onChunk, String? modelName}) async {
     enableWorker();
-    final executionPlan = DistributedExecutionPlan.fromCapabilities(
-      mesh.capabilities.values
-          .where((capability) => capability.nodeId != mesh.deviceId),
-    );
-    final worker = _bestWorker(executionPlan, modelName);
+    var worker = _bestWorker(null, modelName, requireDistributed: true);
+    var executionPlan = worker == null
+        ? null
+        : DistributedExecutionPlan.fromCapabilities(
+            mesh.capabilities.values
+                .where((capability) => capability.nodeId != mesh.deviceId),
+            excludedNodeIds: {worker.nodeId},
+          );
+    if (executionPlan == null) {
+      worker = _bestWorker(null, modelName);
+    }
     if (worker == null) {
       const route = 'LOCAL FALLBACK';
       const nodeName = 'iphone_coordinator';

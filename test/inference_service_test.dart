@@ -32,7 +32,7 @@ void main() {
 
   test('llama.cpp command adapter streams a local worker response', () async {
     final chunks = <String>[];
-    const adapter = LlamaCliAdapter(executable: '/bin/echo');
+    final adapter = LlamaCliAdapter(executable: '/bin/echo');
 
     expect(await adapter.isAvailable(), isTrue);
     final result = await adapter.generate(
@@ -45,10 +45,17 @@ void main() {
     expect(chunks, isNotEmpty);
   });
 
+  test('legacy llama.cpp binaries are not advertised as RPC entrypoints',
+      () async {
+    final adapter = LlamaCliAdapter(executable: '/bin/echo');
+
+    expect(await adapter.supportsRpc(), isFalse);
+  });
+
   test('native-first adapter uses a legacy command worker before demo fallback',
       () async {
     final adapter = NativeFirstAdapter(
-      cli: const LlamaCliAdapter(executable: '/bin/echo'),
+      cli: LlamaCliAdapter(executable: '/bin/echo'),
     );
 
     final result = await adapter.generate(

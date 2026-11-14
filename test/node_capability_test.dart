@@ -44,7 +44,8 @@ void main() {
     mesh.dispose();
   });
 
-  test('distributed plan weights heterogeneous workers by tensor memory', () {
+  test('distributed plan collects heterogeneous RPC workers for auto placement',
+      () {
     final plan = DistributedExecutionPlan.fromCapabilities([
       const NodeCapability(
         nodeId: 'cpu',
@@ -75,12 +76,13 @@ void main() {
       '192.168.1.10:50052',
       '192.168.1.11:50052',
     ]);
-    expect(plan.tensorSplit[0], closeTo(0.25, 0.0001));
-    expect(plan.tensorSplit[1], closeTo(0.75, 0.0001));
+    // The entrypoint may also have local CPU/GPU devices. Leaving this null
+    // lets llama.cpp weight the complete device set by actual free memory.
+    expect(plan.tensorSplit, isNull);
 
     final restored = DistributedExecutionPlan.fromJson(plan.toJson());
     expect(restored.splitMode, 'layer');
-    expect(restored.tensorSplit, plan.tensorSplit);
+    expect(restored.tensorSplit, isNull);
   });
 
   test('inference envelope carries the distributed plan to the entrypoint', () {

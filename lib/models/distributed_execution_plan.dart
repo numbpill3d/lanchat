@@ -2,23 +2,20 @@ import 'node_capability.dart';
 
 class DistributedExecutionPlan {
   final List<String> rpcEndpoints;
-  final List<double> tensorSplit;
+  final List<double>? tensorSplit;
   final String splitMode;
 
   const DistributedExecutionPlan({
     required this.rpcEndpoints,
-    required this.tensorSplit,
+    this.tensorSplit,
     this.splitMode = 'layer',
   });
 
-  bool get isDistributed =>
-      rpcEndpoints.isNotEmpty &&
-      rpcEndpoints.length == tensorSplit.length &&
-      tensorSplit.every((value) => value > 0);
+  bool get isDistributed => rpcEndpoints.isNotEmpty;
 
   Map<String, dynamic> toJson() => {
         'rpcEndpoints': rpcEndpoints,
-        'tensorSplit': tensorSplit,
+        if (tensorSplit != null) 'tensorSplit': tensorSplit,
         'splitMode': splitMode,
       };
 
@@ -27,43 +24,47 @@ class DistributedExecutionPlan {
     final split = json['tensorSplit'];
     if (endpoints is! List ||
         endpoints.any((endpoint) => endpoint is! String) ||
-        split is! List ||
-        split.any((value) => value is! num) ||
-        endpoints.length != split.length ||
-        endpoints.isEmpty ||
-        split.any((value) => (value as num).toDouble() <= 0)) {
+        endpoints.isEmpty) {
+      throw const FormatException('invalid distributed execution plan');
+    }
+    if (split != null &&
+        (split is! List ||
+            split.any((value) => value is! num) ||
+            split.length != endpoints.length ||
+            split.any((value) => (value as num).toDouble() <= 0))) {
       throw const FormatException('invalid distributed execution plan');
     }
     return DistributedExecutionPlan(
       rpcEndpoints: endpoints.cast<String>(),
-      tensorSplit: split.map((value) => (value as num).toDouble()).toList(),
+      tensorSplit: split is List
+          ? split.map((value) => (value as num).toDouble()).toList()
+          : null,
       splitMode:
           json['splitMode'] is String ? json['splitMode'] as String : 'layer',
     );
   }
 
-  /// Builds a plan from workers that expose a llama.cpp RPC endpoint. Weight
-  /// fractions follow reported tensor memory, with a safe equal split when
-  /// workers do not report memory.
+  /// Builds a plan from workers that expose a llama.cpp RPC endpoint.
+  ///
+  /// The split is intentionally left null. Current llama.cpp then sizes the
+  /// placement from the actual free memory of every device in the entrypoint,
+  /// including local CPU/GPU devices and remote RPC devices. The coordinator
+  /// does not know the entrypoint's complete local device order, so inventing a
+  /// fraction list here would be less correct than letting llama.cpp measure it.
   static DistributedExecutionPlan? fromCapabilities(
-      Iterable<NodeCapability> capabilities) {
+      Iterable<NodeCapability> capabilities,
+      {Set<String> excludedNodeIds = const {}}) {
     final workers = capabilities
         .where((capability) =>
+            !excludedNodeIds.contains(capability.nodeId) &&
             capability.supportsTensorSplit &&
             capability.rpcEndpoint != null &&
             capability.rpcEndpoint!.isNotEmpty)
         .toList();
     if (workers.isEmpty) return null;
-    final weights = workers
-        .map((worker) => (worker.tensorMemoryGb ?? 1).toDouble())
-        .toList();
-    final total = weights.fold<double>(0, (sum, value) => sum + value);
     return DistributedExecutionPlan(
       rpcEndpoints:
           workers.map((worker) => worker.rpcEndpoint!).toList(growable: false),
-      tensorSplit: weights
-          .map((weight) => total == 0 ? 1.0 : weight / total)
-          .toList(growable: false),
     );
   }
 }
