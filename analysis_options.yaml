@@ -10,6 +10,10 @@ analyzer:
   errors:
     missing_required_param: error
     missing_return: error
+    # Flutter 3.50 deprecates package:flutter/material.dart in favor of the
+    # separately distributed material_ui package. MeshMind currently targets
+    # the stable Flutter SDK and keeps the Material API for compatibility.
+    deprecated_member_use: ignore
   exclude:
     - build/**
     - android/**
