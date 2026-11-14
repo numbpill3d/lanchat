@@ -340,8 +340,7 @@ class InferenceService {
     _events = null;
   }
 
-  NodeCapability? _bestWorker(
-      DistributedExecutionPlan? executionPlan, String? modelName,
+  NodeCapability? _bestWorker(String? modelName,
       {bool requireDistributed = false}) {
     final workers = mesh.capabilities.values
         .where((capability) => capability.nodeId != mesh.deviceId);
@@ -382,7 +381,7 @@ class InferenceService {
   Future<InferenceResult> generate(String prompt,
       {required void Function(String chunk) onChunk, String? modelName}) async {
     enableWorker();
-    var worker = _bestWorker(null, modelName, requireDistributed: true);
+    var worker = _bestWorker(modelName, requireDistributed: true);
     var executionPlan = worker == null
         ? null
         : DistributedExecutionPlan.fromCapabilities(
@@ -391,7 +390,7 @@ class InferenceService {
             excludedNodeIds: {worker.nodeId},
           );
     if (executionPlan == null) {
-      worker = _bestWorker(null, modelName);
+      worker = _bestWorker(modelName);
     }
     if (worker == null) {
       const route = 'LOCAL FALLBACK';
