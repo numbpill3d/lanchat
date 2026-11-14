@@ -1,7 +1,7 @@
 name: lanchat
 description: MeshMind — local AI assembled from the devices you already own.
 publish_to: none
-version: 1.0.0+1
+version: 1.1.0+1
 
 environment:
   sdk: '>=3.3.0 <4.0.0'
@@ -75,7 +75,7 @@ msix_config:
   publisher_display_name: numbpill3d
   identity_name: com.lanchat.app
   publisher: CN=numbpill3d
-  msix_version: 1.0.0.0
+  msix_version: 1.1.0.0
   logo_path: assets/icon/icon.png
   capabilities: "internetClient,privateNetworkClientServer"
   languages: en-us
