@@ -1,197 +1,187 @@
 # MeshMind
 
-Private local AI assembled from the devices you already own. No account, no
-cloud round-trip, and no central server: the iPhone coordinates a mesh of
-nearby phones, tablets, laptops, and single-board computers over mDNS and
-WebSockets.
+**Reassemble the hardware you already own into one private local AI mesh.**
 
-MeshMind is a Flutter app for **Linux, macOS, Windows, Android, and iOS**.
-The iPhone is the control surface; workers contribute local models and compute.
+MeshMind is a Flutter coordinator and worker app for iOS, Android, Linux,
+macOS, and Windows. It discovers nearby devices over Bonjour/mDNS, learns what
+each device can run, routes prompts to the best available node, and can use
+current llama.cpp RPC to place one GGUF model across local and remote CPU/GPU
+devices.
+
+No account. No cloud relay. No central server.
 
 ## Screenshots
 
-The current UI is the pale-metal control-panel dashboard in
-`lib/screens/mesh_screen.dart`.
+| Pool control | Discovered nodes | Model Bay |
+| --- | --- | --- |
+| ![MeshMind pool dashboard](docs/screenshots/dashboard.png) | ![MeshMind discovered nodes](docs/screenshots/nodes.png) | ![MeshMind Model Bay](docs/screenshots/models.png) |
 
-## Highlights
+## What it does
 
-- **mDNS peer discovery** via `_meshmind._tcp` — nearby workers appear automatically.
-- **Capability handshake** — nodes advertise platform, memory, models, battery,
-  thermal state, and supported features.
-- **Targeted streaming inference** — the coordinator routes a prompt to the
-  best available worker and falls back locally if it disappears.
-- **Distributed tensor offload** — desktop-class workers with a current
-  `ggml-rpc-server` can expose CPU/GPU memory to a coordinator, which builds a
-  `--rpc` plan for one model across nodes; llama.cpp sizes placement from the
-  actual free memory of local and remote devices.
-- **Multi-model routing** — requests may name a model; capability discovery
-  prevents a worker from receiving a model it does not advertise.
-- **Model Bay** — import GGUF files from Files or a LAN
-  share; MeshMind copies them into its local app-support model directory.
-- **Legacy-worker support** — a laptop with `llama-cli` installed can run a
-  real GGUF model without requiring the iPhone to be the strongest device.
-- **Private by design** — the prototype stays on the LAN and keeps no cloud
-  account or server-side history.
+- Discovers nearby phones, tablets, laptops, desktops, and single-board
+  computers with `_meshmind._tcp` Bonjour/mDNS.
+- Exchanges capability records containing platform, memory, models, battery,
+  thermal state, and supported execution features.
+- Streams inference responses through targeted WebSocket envelopes.
+- Imports GGUF models from the device Files picker and keeps their paths local.
+- Routes named models only to workers that advertise those models.
+- Starts `ggml-rpc-server` on desktop-class nodes when a compatible current
+  llama.cpp installation is available.
+- Sends `--rpc` execution plans to a llama.cpp entrypoint. llama.cpp then
+  places model weights and KV cache across local and remote devices using
+  actual available device memory.
+- Avoids unhealthy workers and retries locally when a worker disappears.
+- Works as a useful single-device local app even when no peer is available.
+
+## Architecture
+
+```text
+             prompt + selected model
+                       │
+                       ▼
+        ┌────────────────────────────┐
+        │ iPhone / MeshMind          │
+        │ coordinator + model router │
+        └──────────────┬─────────────┘
+                       │ mDNS + authenticated WebSocket mesh
+          ┌────────────┼─────────────┐
+          ▼            ▼             ▼
+     old laptop     desktop GPU    mini PC
+     llama.cpp      RPC device     CPU RPC device
+     entrypoint     contributor    contributor
+          └────────────┬────────────┘
+                       ▼
+             one GGUF model placement
+             across local + remote devices
+```
+
+The iPhone can coordinate desktop workers and run its own native local GGUF
+runtime. Desktop nodes can be inference entrypoints and RPC contributors.
+Mobile operating systems do not launch the desktop `ggml-rpc-server` process;
+they contribute through the native runtime or act as coordinators when their
+platform/runtime supports it.
 
 ## Quick start
 
-### Install on your platform
-
-| Platform | Where to get it |
-| --- | --- |
-| **Linux (AUR)** | `yay -S lanchat-bin` (uses `packaging/aur/PKGBUILD`) |
-| **Linux (tarball)** | Download `lanchat-linux-x64.tar.gz` from the [latest release](https://github.com/numbpill3d/lanchat/releases/latest), extract, and run `./lanchat` |
-| **macOS** | Download `lanchat-macos.dmg` (or `.zip`) from the [latest release](https://github.com/numbpill3d/lanchat/releases/latest) |
-| **Windows** | Download `lanchat-windows-x64.zip` or `*.msix` from the [latest release](https://github.com/numbpill3d/lanchat/releases/latest) |
-| **Android** | Download the per-ABI APK from the [latest release](https://github.com/numbpill3d/lanchat/releases/latest). `minSdk` is 21. |
-
-On Linux you also need `avahi` and `gtk3` available on the system for mDNS and
-the GTK application to work. To make a Linux/macOS/Windows laptop a real GGUF
-worker, install the llama.cpp completion binary (`llama-cli` on packaged
-releases or `llama-completion` from current source), launch MeshMind, and
-import the model in Model Bay. The adapter streams the local process output
-and never sends the model to a cloud service.
-
-For distributed execution, install matching current llama.cpp binaries that
-include a completion binary (`llama-cli` or `llama-completion`) and
-`ggml-rpc-server` with RPC enabled. MeshMind starts
-the RPC worker on the LAN when available and advertises its endpoint. This is
-an experimental llama.cpp proof-of-concept path: keep it on a trusted LAN or
-VPN because the raw RPC port is not encrypted. The older pinned iOS runtime is
-still a local single-device backend; iOS can coordinate desktop RPC workers
-but does not launch a desktop RPC process itself.
-
-### Build from source
+### Run from source
 
 ```bash
-flutter --version        # stable channel, 3.32 or newer
 flutter pub get
-flutter run              # desktop, Android, or iOS
-flutter build linux      # builds ./build/linux/x64/release/bundle/
+flutter run
 ```
 
-To produce a packaged release locally:
+Build the local desktop target:
 
 ```bash
 flutter build linux --release
-flutter build macos --release
-flutter build windows --release
-flutter build apk --release --split-per-abi
 ```
 
-For the native iOS GGUF runtime and model lifecycle, see
-[`docs/IOS_RUNTIME.md`](docs/IOS_RUNTIME.md).
+The Linux target needs GTK 3 and Avahi. On Arch-based systems:
 
-## How it works
-
-When you launch MeshMind, your client:
-
-1. Picks a free port in `5700-5800` and starts a `shelf`-based WebSocket
-   server bound to all IPv4 interfaces.
-2. Broadcasts an mDNS service of type `_meshmind._tcp` with your nickname and
-   device id in the attributes.
-3. Discovers other `_meshmind._tcp` services, resolves their host/port, and
-   opens an outbound WebSocket to each.
-4. Exchanges node capabilities and targets inference envelopes at the selected
-   worker. Each message is deduped by `id` so a payload can hop through the
-   mesh without being duplicated.
-
-Closing the app stops the server, shuts down mDNS, and broadcasts a
-`leave` message so the other peers can drop you from their peer list.
-
-### Network requirements
-
-- mDNS / Bonjour / Avahi must be available on the network. On Linux this
-  usually means `avahi-daemon` is running.
-- All peers must be on the same subnet. Routers typically block multicast
-  mDNS and inbound WebSocket traffic between subnets.
-- WebSocket traffic is on the chosen port in `5700-5800`. Make sure your
-  host firewall allows inbound TCP on this range if you want other peers to
-  reach you.
-- Distributed RPC uses TCP port `50052` by default. Only allow it from the
-  trusted local subnet or VPN; do not port-forward it.
-
-## Configuration
-
-MeshMind is intentionally configuration-light. The main choices are:
-
-- The local node nickname.
-- The model file imported into Model Bay, if this device should also serve as
-  a worker.
-- The bundled app icon is `assets/icon/icon.png`. Replace it and rerun
-  `dart run flutter_launcher_icons` to regenerate the platform icons.
-
-## Project layout
-
+```bash
+sudo pacman -S gtk3 avahi
+sudo systemctl enable --now avahi-daemon
 ```
-lib/
-  main.dart              # Window setup + theme + app shell
-  models/
-    message.dart         # Mesh message envelope and message types
-    inference_envelope.dart
-    node_capability.dart # Worker capability handshake
-    distributed_execution_plan.dart # Heterogeneous RPC/tensor placement
-    local_model.dart     # Imported model metadata and executable path
-  services/
-    chat_service.dart    # Server, discovery, capability and mesh transport
-    inference_service.dart # Routing, streaming, native and llama-cli adapters
-    rpc_worker_service.dart # Optional desktop ggml-rpc-server lifecycle
-  screens/
-    mesh_screen.dart     # Pool, nodes, prompt router and Model Bay
-test/
-  inference_service_test.dart
-  node_capability_test.dart
-.github/workflows/
-  ci.yml                 # analyze + test + Linux + Android on every push
-  release.yml            # Linux/Windows/macOS/Android + signed GitHub release
-android/                 # Gradle (AGP 8.7.3, Kotlin 2.1.21, compileSdk 35)
-linux/, macos/, windows/  # Native scaffolding
-assets/icon/             # Source icon
-packaging/aur/PKGBUILD   # AUR packaging helper
+
+### Make a legacy laptop a worker
+
+1. Install a llama.cpp completion binary: `llama-cli` from a packaged build,
+   or `llama-completion` from current llama.cpp source.
+2. Launch MeshMind on the laptop.
+3. Import a `.gguf` file in **Model Bay**.
+4. Launch MeshMind on the iPhone or another coordinator on the same trusted
+   network.
+
+The app automatically detects either executable name and streams local output
+without uploading the model or prompt.
+
+### Enable distributed model execution
+
+Build current llama.cpp with RPC enabled on desktop hosts:
+
+```bash
+cmake -S . -B build-rpc -DGGML_RPC=ON
+cmake --build build-rpc --target llama-completion ggml-rpc-server -j
 ```
+
+MeshMind starts the RPC worker automatically when both the completion binary
+and `ggml-rpc-server` are available. It advertises the LAN endpoint and sends
+the coordinator a distributed plan. The entrypoint launches llama.cpp with
+`--rpc` and the default `layer` split mode; current llama.cpp sizes placement
+from the complete local and remote device set.
+
+For heterogeneous GPUs, build the matching llama.cpp backend on each host,
+for example `-DGGML_CUDA=ON -DGGML_RPC=ON` for CUDA. The RPC server exposes
+available accelerator devices, or a CPU device when no accelerator is
+available.
+
+## Network and security
+
+- All nodes should be on the same trusted subnet or VPN.
+- Bonjour/mDNS discovery must be allowed between peers.
+- MeshMind WebSockets use per-session join tokens before a peer can forward
+  messages.
+- WebSocket traffic uses a free port in `5700-5800`.
+- llama.cpp RPC uses TCP port `50052` by default.
+- Raw llama.cpp RPC is experimental and not encrypted. Do not expose port
+  `50052` to the public internet or port-forward it.
+
+The RPC backend is explicitly described by llama.cpp as proof-of-concept,
+fragile, and insecure. Read the upstream [RPC documentation][llama-rpc] before
+using it outside a controlled LAN.
+
+## Supported platforms
+
+| Platform | Role |
+| --- | --- |
+| iOS | Coordinator and native local GGUF worker |
+| Android | Coordinator/mesh worker; native llama.cpp runtime integration is pending |
+| Linux | Coordinator, llama.cpp worker, and RPC entrypoint/contributor |
+| macOS | Coordinator, llama.cpp worker, and RPC entrypoint/contributor |
+| Windows | Coordinator, llama.cpp worker, and RPC entrypoint/contributor |
 
 ## Development
 
-Run the test suite:
-
 ```bash
 flutter pub get
-flutter test
-```
-
-Run the linter:
-
-```bash
 flutter analyze
+flutter test
+flutter build linux --release
 ```
 
-### Code signing for release artifacts
+Important implementation areas:
 
-The release workflow can sign Android APKs and Windows MSIX packages if
-you provide the following repository secrets:
-
-- `LANCHAT_KEYSTORE_BASE64` — base64-encoded Android keystore (`.jks`).
-- `LANCHAT_KEYSTORE_PASSWORD`, `LANCHAT_KEY_ALIAS`, `LANCHAT_KEY_PASSWORD`
-  — keystore credentials.
-- `MSIX_CERT_BASE64`, `MSIX_CERT_PASSWORD` — base64-encoded `.pfx` and its
-  password for Windows MSIX signing.
-
-If these are not set, the build will still succeed but the artifacts will
-be unsigned (Android uses the debug keystore, MSIX is built without a
-publisher certificate).
-
-## Releases
-
-Releases are cut by pushing a `v*` tag:
-
-```bash
-git tag v1.1.0
-git push origin v1.1.0
+```text
+lib/models/node_capability.dart             capability handshake
+lib/models/distributed_execution_plan.dart  RPC placement plan
+lib/models/inference_envelope.dart          streaming request protocol
+lib/services/chat_service.dart              mDNS + WebSocket mesh
+lib/services/inference_service.dart         routing + local adapters
+lib/services/rpc_worker_service.dart        desktop RPC lifecycle
+lib/screens/mesh_screen.dart                pool, nodes, and Model Bay UI
+ios/MeshMindInference/                      native iOS llama.cpp boundary
 ```
 
-The `Release` workflow builds Linux, Windows, macOS, and Android artifacts
-and publishes a draft GitHub release with auto-generated notes.
+CI runs analysis, tests, Linux builds, and Android builds. Release builds are
+published by the tag workflow for Linux, Windows, macOS, and Android where the
+runner/toolchain is available.
+
+## Verification
+
+The distributed path has been smoke-tested with current llama.cpp built using
+`-DGGML_RPC=ON`: one completion host loaded TinyLlama through two separate CPU
+`ggml-rpc-server` processes, both RPC workers recorded client connections, and
+the completion exited successfully. MeshMind's Flutter analyzer and test suite
+also pass.
+
+## Project documents
+
+- [MeshMind product and architecture plan](docs/MESH_MIND_PLAN.md)
+- [iOS native runtime notes](docs/IOS_RUNTIME.md)
+- [License](LICENSE)
+
+[llama-rpc]: https://github.com/ggml-org/llama.cpp/blob/master/tools/rpc/README.md
 
 ## License
 
-MIT — see [LICENSE](LICENSE).
+MIT. See [LICENSE](LICENSE).
