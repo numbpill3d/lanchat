@@ -644,7 +644,7 @@
 /* Begin XCSwiftPackageProductDependency section */
 		AABBCCDD0011223344556688 /* MeshMindInference */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = AABBCCDD0011223344556699 /* XCLocalSwiftPackageReference "../MeshMindInference" */;
+			package = AABBCCDD0011223344556699 /* XCLocalSwiftPackageReference "MeshMindInference" */;
 			productName = MeshMindInference;
 		};
 		78A3181F2AECB46A00862997 /* FlutterGeneratedPluginSwiftPackage */ = {
