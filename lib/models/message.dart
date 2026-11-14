@@ -1,6 +1,16 @@
 import 'package:uuid/uuid.dart';
 
-enum MessageType { text, image, join, leave }
+enum MessageType {
+  text,
+  image,
+  join,
+  leave,
+  capability,
+  inferenceRequest,
+  inferenceChunk,
+  inferenceComplete,
+  inferenceError,
+}
 
 class Message {
   static const maxTextLength = 16 * 1024;
@@ -10,6 +20,7 @@ class Message {
   final MessageType type;
   final String senderNickname;
   final String senderId;
+  final String? targetId;
   final String content; // text, or base64-encoded image bytes
   final String? mimeType;
   final DateTime timestamp;
@@ -19,6 +30,7 @@ class Message {
     required this.type,
     required this.senderNickname,
     required this.senderId,
+    this.targetId,
     required this.content,
     this.mimeType,
     DateTime? timestamp,
@@ -33,6 +45,7 @@ class Message {
         'type': type.name,
         'senderNickname': senderNickname,
         'senderId': senderId,
+        if (targetId != null) 'targetId': targetId,
         'content': content,
         if (mimeType != null) 'mimeType': mimeType,
         'timestamp': timestamp.millisecondsSinceEpoch,
@@ -67,6 +80,7 @@ class Message {
       type: type,
       senderNickname: requiredString('senderNickname'),
       senderId: requiredString('senderId'),
+      targetId: json['targetId'] is String ? json['targetId'] as String : null,
       content: content,
       mimeType: json['mimeType'] is String ? json['mimeType'] as String : null,
       timestamp: DateTime.fromMillisecondsSinceEpoch(timestamp),

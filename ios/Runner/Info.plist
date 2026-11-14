@@ -5,7 +5,7 @@
     <key>CFBundleDevelopmentRegion</key>
     <string>$(DEVELOPMENT_LANGUAGE)</string>
     <key>CFBundleDisplayName</key>
-    <string>LanChat</string>
+    <string>MeshMind</string>
     <key>CFBundleExecutable</key>
     <string>$(EXECUTABLE_NAME)</string>
     <key>CFBundleIdentifier</key>
@@ -13,7 +13,7 @@
     <key>CFBundleInfoDictionaryVersion</key>
     <string>6.0</string>
     <key>CFBundleName</key>
-    <string>lanchat</string>
+    <string>meshmind</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
     <key>CFBundleShortVersionString</key>
@@ -47,15 +47,15 @@
     <!-- mDNS / Bonjour -->
     <key>NSBonjourServices</key>
     <array>
-        <string>_lanchat._tcp</string>
+        <string>_meshmind._tcp</string>
     </array>
     <key>NSLocalNetworkUsageDescription</key>
-    <string>LanChat uses the local network to discover and chat with nearby peers on the same Wi-Fi.</string>
+    <string>MeshMind uses your local network to discover nearby devices and run private AI tasks across them.</string>
 
     <!-- image picker -->
     <key>NSPhotoLibraryUsageDescription</key>
-    <string>LanChat accesses your photo library to share images in chat.</string>
+    <string>MeshMind accesses your photo library when you import a model or image.</string>
     <key>NSCameraUsageDescription</key>
-    <string>LanChat uses the camera to take photos to share in chat.</string>
+    <string>MeshMind uses the camera only when a future local workflow needs it.</string>
 </dict>
 </plist>

@@ -13,7 +13,7 @@
         android:maxSdkVersion="32"/>
 
     <application
-        android:label="LanChat"
+        android:label="MeshMind"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:usesCleartextTraffic="true">

@@ -10,15 +10,20 @@ import 'package:uuid/uuid.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
 import '../models/message.dart';
+import '../models/inference_envelope.dart';
+import '../models/local_model.dart';
+import '../models/node_capability.dart';
 import '../models/peer.dart';
+import '../models/session_handshake.dart';
 
 class ChatService extends ChangeNotifier {
-  static const _mdnsType = '_lanchat._tcp';
+  static const _mdnsType = '_meshmind._tcp';
   static const _firstPort = 5700;
   static const _lastPort = 5800;
   static const _maxRememberedMessageIds = 4096;
 
   final String _deviceId = const Uuid().v4();
+  final String _sessionToken = const Uuid().v4();
   String? _nickname;
   int _serverPort = 0;
 
@@ -34,9 +39,18 @@ class ChatService extends ChangeNotifier {
 
   final List<Message> _messages = [];
   final Map<String, Peer> _peers = {};
+  final Map<String, NodeCapability> _capabilities = {};
+  final List<String> _localModels = [];
+  final Map<String, LocalModel> _localModelFiles = {};
+  int? _batteryPercent;
+  String _thermalState = 'unknown';
+  bool _runtimeAvailable = false;
+  final StreamController<InferenceEnvelope> _inferenceEvents =
+      StreamController<InferenceEnvelope>.broadcast();
   final Set<String> _processedIds = {};
   final List<String> _processedIdOrder = [];
   final Set<String> _connectingPeers = {};
+  final Set<WebSocketChannel> _authorizedServerChannels = {};
   bool _disposed = false;
   String? _startupWarning;
   Future<void>? _startInFlight;
@@ -48,6 +62,30 @@ class ChatService extends ChangeNotifier {
   int get peerCount => _peers.length;
   bool get isRunning => _httpServer != null;
   String? get startupWarning => _startupWarning;
+  Map<String, NodeCapability> get capabilities =>
+      Map.unmodifiable(_capabilities);
+  Stream<InferenceEnvelope> get inferenceEvents => _inferenceEvents.stream;
+  List<LocalModel> get localModelFiles =>
+      List.unmodifiable(_localModelFiles.values);
+  String? get preferredLocalModelPath => _localModelFiles.values
+      .map((model) => model.path)
+      .firstWhere((path) => path != null && path.isNotEmpty,
+          orElse: () => null);
+
+  NodeCapability get localCapability => NodeCapability(
+        nodeId: _deviceId,
+        displayName: _nickname ?? 'iphone_coordinator',
+        platform: Platform.operatingSystem,
+        memoryGb: 4,
+        models: List.unmodifiable(_localModels),
+        features: [
+          if (_runtimeAvailable && _localModels.isNotEmpty) 'text-generation',
+          'offline',
+          'lan-routing',
+        ],
+        batteryPercent: _batteryPercent,
+        thermalState: _thermalState,
+      );
 
   Future<void> start(String nickname) async {
     if (isRunning) return;
@@ -65,12 +103,55 @@ class ChatService extends ChangeNotifier {
     }
   }
 
+  void registerLocalModel(String modelName, {String? path, int? sizeBytes}) {
+    final cleaned = modelName.trim();
+    if (cleaned.isEmpty) return;
+    if (_localModels.contains(cleaned)) {
+      if (path != null && path.isNotEmpty) {
+        _localModelFiles[cleaned] = LocalModel(
+          name: cleaned,
+          path: path,
+          sizeBytes: sizeBytes ?? 0,
+        );
+        _capabilities[_deviceId] = localCapability;
+        if (isRunning) _broadcastMessage(_capabilityMessage());
+        _notifyChanged();
+      }
+      return;
+    }
+    _localModels.add(cleaned);
+    _localModelFiles[cleaned] = LocalModel(
+      name: cleaned,
+      path: path,
+      sizeBytes: sizeBytes ?? 0,
+    );
+    _capabilities[_deviceId] = localCapability;
+    if (isRunning) _broadcastMessage(_capabilityMessage());
+    _notifyChanged();
+  }
+
+  void registerLocalHealth(int? batteryPercent, String thermalState) {
+    _batteryPercent = batteryPercent;
+    _thermalState = thermalState;
+    _capabilities[_deviceId] = localCapability;
+    if (isRunning) _broadcastMessage(_capabilityMessage());
+    _notifyChanged();
+  }
+
+  void registerLocalRuntime(bool available) {
+    _runtimeAvailable = available;
+    _capabilities[_deviceId] = localCapability;
+    if (isRunning) _broadcastMessage(_capabilityMessage());
+    _notifyChanged();
+  }
+
   Future<void> _startInternal(String nickname) async {
     final cleaned = nickname.trim();
     if (cleaned.isEmpty || cleaned.length > 24) {
       throw ArgumentError('nickname must be between 1 and 24 characters');
     }
     _nickname = cleaned;
+    _capabilities[_deviceId] = localCapability;
     try {
       await _startServer();
       _startupWarning = null;
@@ -82,9 +163,9 @@ class ChatService extends ChangeNotifier {
         // a running Avahi daemon can still open the chat and recover once the
         // service is available again.
         _startupWarning =
-            'mDNS discovery is unavailable. The local chat server is running, '
+            'mDNS discovery is unavailable. The local MeshMind node is running, '
             'but peers cannot be found automatically.';
-        debugPrint('lanchat: mDNS startup failed: $error');
+        debugPrint('meshmind: mDNS startup failed: $error');
         await _stopDiscoveryServices();
       }
       _notifyChanged();
@@ -103,9 +184,13 @@ class ChatService extends ChangeNotifier {
         (raw) => _onData(raw, source: channel),
         onDone: () {
           _serverChannels.remove(connId);
+          _authorizedServerChannels.remove(channel);
           _notifyChanged();
         },
-        onError: (_) => _serverChannels.remove(connId),
+        onError: (_) {
+          _serverChannels.remove(connId);
+          _authorizedServerChannels.remove(channel);
+        },
         cancelOnError: true,
       );
     });
@@ -137,63 +222,63 @@ class ChatService extends ChangeNotifier {
       attributes: {
         'id': _deviceId,
         'nick': nick,
+        'token': _sessionToken,
       },
     );
     _bonsoirBroadcast = BonsoirBroadcast(service: service);
-    await _bonsoirBroadcast!.ready;
+    await _bonsoirBroadcast!.initialize();
     await _bonsoirBroadcast!.start();
   }
 
   Future<void> _startDiscovery() async {
     _bonsoirDiscovery = BonsoirDiscovery(type: _mdnsType);
-    await _bonsoirDiscovery!.ready;
+    await _bonsoirDiscovery!.initialize();
 
     _discoverySubscription = _bonsoirDiscovery!.eventStream!.listen(
       (event) {
-        switch (event.type) {
-          case BonsoirDiscoveryEventType.discoveryServiceFound:
-            event.service?.resolve(_bonsoirDiscovery!.serviceResolver);
+        if (event is BonsoirDiscoveryServiceFoundEvent) {
+          unawaited(event.service.resolve(_bonsoirDiscovery!.serviceResolver));
+          return;
+        }
+        if (event is BonsoirDiscoveryServiceResolvedEvent) {
+          final svc = event.service;
+          final attrs = svc.attributes;
+          final peerId = attrs['id'];
+          final peerNick = attrs['nick'] ?? svc.name;
+          final authToken = attrs['token'];
 
-          case BonsoirDiscoveryEventType.discoveryServiceResolved:
-            final svc = event.service;
-            if (svc == null) return;
+          if (peerId == null || peerId == _deviceId || authToken == null) {
+            return;
+          }
+          if (_clientChannels.containsKey(peerId) ||
+              _connectingPeers.contains(peerId)) {
+            return;
+          }
 
-            final attrs = svc.attributes;
-            final peerId = attrs['id'];
-            final peerNick = attrs['nick'] ?? svc.name;
+          final host = svc.hostAddress;
+          if (host == null || host.isEmpty) return;
 
-            if (peerId == null || peerId == _deviceId) return;
-            if (_clientChannels.containsKey(peerId) ||
-                _connectingPeers.contains(peerId)) {
-              return;
-            }
+          final peer = Peer(
+            id: peerId,
+            nickname: peerNick,
+            host: host,
+            port: svc.port,
+            authToken: authToken,
+          );
+          _peers[peerId] = peer;
+          _notifyChanged();
 
-            final resolved = svc as ResolvedBonsoirService;
-            final host = resolved.host;
-            if (host == null) return;
-
-            final peer = Peer(
-              id: peerId,
-              nickname: peerNick,
-              host: host,
-              port: svc.port,
-            );
-            _peers[peerId] = peer;
+          _connectToPeer(peer);
+          return;
+        }
+        if (event is BonsoirDiscoveryServiceLostEvent) {
+          final peerId = event.service.attributes['id'];
+          if (peerId != null && peerId != _deviceId) {
+            _peers.remove(peerId);
+            _clientChannels[peerId]?.sink.close();
+            _clientChannels.remove(peerId);
             _notifyChanged();
-
-            _connectToPeer(peer);
-
-          case BonsoirDiscoveryEventType.discoveryServiceLost:
-            final peerId = event.service?.attributes['id'];
-            if (peerId != null && peerId != _deviceId) {
-              _peers.remove(peerId);
-              _clientChannels[peerId]?.sink.close();
-              _clientChannels.remove(peerId);
-              _notifyChanged();
-            }
-
-          default:
-            break;
+          }
         }
       },
       onError: (Object error, StackTrace stack) {
@@ -240,12 +325,16 @@ class ChatService extends ChangeNotifier {
       type: MessageType.join,
       senderNickname: nick,
       senderId: _deviceId,
-      content: '$nick joined',
+      content: SessionHandshake.encode(
+        nickname: nick,
+        token: peer.authToken!,
+      ),
     );
     // The remote side echoes the join through the mesh; remember it locally
     // so the sender does not render its own handshake as a chat event.
     _rememberMessageId(join.id);
     _sendOn(channel, join);
+    _sendOn(channel, _capabilityMessage());
 
     channel.stream.listen(
       (raw) => _onData(raw, source: channel),
@@ -273,8 +362,33 @@ class ChatService extends ChangeNotifier {
     try {
       final json = jsonDecode(raw) as Map<String, dynamic>;
       final msg = Message.fromJson(json);
+      if (source != null &&
+          _serverChannels.values.contains(source) &&
+          !_authorizedServerChannels.contains(source)) {
+        if (msg.type != MessageType.join || _joinToken(msg) != _sessionToken) {
+          unawaited(source.sink.close());
+          return;
+        }
+        _authorizedServerChannels.add(source);
+      }
       if (_processedIds.contains(msg.id)) return;
       _rememberMessageId(msg.id);
+      if (msg.targetId != null && msg.targetId != _deviceId) {
+        _broadcastMessage(msg, except: source);
+        return;
+      }
+      if (msg.type == MessageType.capability) {
+        _capabilities[msg.senderId] = NodeCapability.decode(msg.content);
+        _notifyChanged();
+        _broadcastMessage(msg, except: source);
+        return;
+      }
+      if (_isInferenceMessage(msg.type)) {
+        _inferenceEvents.add(InferenceEnvelope.decode(msg.type, msg.content,
+            senderId: msg.senderId));
+        _broadcastMessage(msg, except: source);
+        return;
+      }
       _messages.add(msg);
       if (msg.type == MessageType.leave) {
         _dropPeer(msg.senderId);
@@ -284,6 +398,10 @@ class ChatService extends ChangeNotifier {
     } catch (e) {
       debugPrint('lanchat: bad message: $e');
     }
+  }
+
+  String? _joinToken(Message message) {
+    return SessionHandshake.tokenFrom(message.content);
   }
 
   void _rememberMessageId(String id) {
@@ -334,6 +452,36 @@ class ChatService extends ChangeNotifier {
     _broadcastMessage(msg);
   }
 
+  Message _capabilityMessage() => Message(
+        type: MessageType.capability,
+        senderNickname: _nickname ?? 'iphone_coordinator',
+        senderId: _deviceId,
+        content: localCapability.encode(),
+      );
+
+  void sendInference(InferenceEnvelope envelope) {
+    final nick = _nickname;
+    if (nick == null) return;
+    final msg = Message(
+      type: envelope.type,
+      senderNickname: nick,
+      senderId: _deviceId,
+      targetId: envelope.targetId,
+      content: envelope.encode(),
+    );
+    _rememberMessageId(msg.id);
+    _broadcastMessage(msg);
+  }
+
+  bool _isInferenceMessage(MessageType type) => switch (type) {
+        MessageType.inferenceRequest ||
+        MessageType.inferenceChunk ||
+        MessageType.inferenceComplete ||
+        MessageType.inferenceError =>
+          true,
+        _ => false,
+      };
+
   Future<void> sendImage(Uint8List bytes, String mimeType) async {
     final nick = _nickname;
     if (nick == null || bytes.isEmpty || bytes.length > 6 * 1024 * 1024) {
@@ -379,7 +527,10 @@ class ChatService extends ChangeNotifier {
 
     _serverChannels.clear();
     _clientChannels.clear();
+    _authorizedServerChannels.clear();
     _peers.clear();
+    _capabilities.clear();
+    _localModelFiles.clear();
     _messages.clear();
     _processedIds.clear();
     _processedIdOrder.clear();
@@ -395,6 +546,7 @@ class ChatService extends ChangeNotifier {
   void dispose() {
     _disposed = true;
     unawaited(stop());
+    unawaited(_inferenceEvents.close());
     super.dispose();
   }
 

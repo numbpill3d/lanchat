@@ -1,31 +1,31 @@
-# LanChat
+# MeshMind
 
-Zero-account local-network chat for people on the same Wi-Fi. No signup, no
-internet, no central server — every peer runs its own WebSocket and the
-desktop and mobile clients find each other through mDNS.
+Private local AI assembled from the devices you already own. No account, no
+cloud round-trip, and no central server: the iPhone coordinates a mesh of
+nearby phones, tablets, laptops, and single-board computers over mDNS and
+WebSockets.
 
-LanChat is a Flutter app for **Linux, macOS, Windows, Android, and iOS**.
-Messages and images stay on the local network and disappear when you close
-the app.
+MeshMind is a Flutter app for **Linux, macOS, Windows, Android, and iOS**.
+The iPhone is the control surface; workers contribute local models and compute.
 
 ## Screenshots
 
-![LanChat nickname screen](docs/nickname-screen.svg)
-
-![LanChat chat screen](docs/chat-screen.svg)
+The current UI is the pale-metal control-panel dashboard in
+`lib/screens/mesh_screen.dart`.
 
 ## Highlights
 
-- **mDNS peer discovery** via `bonsoir` — every peer is auto-detected on the
-  local network.
-- **WebSocket mesh** with `shelf` — each peer runs a tiny WebSocket server on
-  a free port in `5700-5800` and connects to every other peer it discovers.
-- **Ephemeral** — no history, no cloud, no accounts. The chat list is gone
-  when you close the window.
-- **Text and images** — drag a PNG/JPG/GIF into the picker and the bytes go
-  base64-encoded to every connected peer.
-- **Dark, focused UI** — fixed black/red surface, mono-styled typography, no
-  distractions.
+- **mDNS peer discovery** via `_meshmind._tcp` — nearby workers appear automatically.
+- **Capability handshake** — nodes advertise platform, memory, models, battery,
+  thermal state, and supported features.
+- **Targeted streaming inference** — the coordinator routes a prompt to the
+  best available worker and falls back locally if it disappears.
+- **Model Bay** — import GGUF files from Files or a LAN
+  share; MeshMind copies them into its local app-support model directory.
+- **Legacy-worker support** — a laptop with `llama-cli` installed can run a
+  real GGUF model without requiring the iPhone to be the strongest device.
+- **Private by design** — the prototype stays on the LAN and keeps no cloud
+  account or server-side history.
 
 ## Quick start
 
@@ -39,8 +39,11 @@ the app.
 | **Windows** | Download `lanchat-windows-x64.zip` or `*.msix` from the [latest release](https://github.com/numbpill3d/lanchat/releases/latest) |
 | **Android** | Download the per-ABI APK from the [latest release](https://github.com/numbpill3d/lanchat/releases/latest). `minSdk` is 21. |
 
-On Linux you also need `avahi` and `gtk3` available on the system for
-mDNS and the GTK application to work.
+On Linux you also need `avahi` and `gtk3` available on the system for mDNS and
+the GTK application to work. To make a Linux/macOS/Windows laptop a real GGUF
+worker, install `llama-cli` from llama.cpp, launch MeshMind, and import the
+model in Model Bay. The adapter streams the local process output and never
+sends the model to a cloud service.
 
 ### Build from source
 
@@ -60,19 +63,22 @@ flutter build windows --release
 flutter build apk --release --split-per-abi
 ```
 
+For the native iOS GGUF runtime and model lifecycle, see
+[`docs/IOS_RUNTIME.md`](docs/IOS_RUNTIME.md).
+
 ## How it works
 
-When you launch LanChat and pick a nickname, your client:
+When you launch MeshMind, your client:
 
 1. Picks a free port in `5700-5800` and starts a `shelf`-based WebSocket
    server bound to all IPv4 interfaces.
-2. Broadcasts an mDNS service of type `_lanchat._tcp` with your nickname and
+2. Broadcasts an mDNS service of type `_meshmind._tcp` with your nickname and
    device id in the attributes.
-3. Discovers other `_lanchat._tcp` services, resolves their host/port, and
+3. Discovers other `_meshmind._tcp` services, resolves their host/port, and
    opens an outbound WebSocket to each.
-4. Echoes every text or image message to every connected peer (server- and
-   client-side channels). Each message is deduped by `id` so the same
-   payload can hop through the mesh without being duplicated.
+4. Exchanges node capabilities and targets inference envelopes at the selected
+   worker. Each message is deduped by `id` so a payload can hop through the
+   mesh without being duplicated.
 
 Closing the app stops the server, shuts down mDNS, and broadcasts a
 `leave` message so the other peers can drop you from their peer list.
@@ -89,10 +95,11 @@ Closing the app stops the server, shuts down mDNS, and broadcasts a
 
 ## Configuration
 
-LanChat is intentionally configuration-free. The only choices are:
+MeshMind is intentionally configuration-light. The main choices are:
 
-- The auto-generated nickname on the launch screen. You can edit it before
-  joining.
+- The local node nickname.
+- The model file imported into Model Bay, if this device should also serve as
+  a worker.
 - The bundled app icon is `assets/icon/icon.png`. Replace it and rerun
   `dart run flutter_launcher_icons` to regenerate the platform icons.
 
@@ -102,18 +109,18 @@ LanChat is intentionally configuration-free. The only choices are:
 lib/
   main.dart              # Window setup + theme + app shell
   models/
-    message.dart         # Message + MessageType (text/image/join/leave)
-    peer.dart            # Discovered peer metadata
+    message.dart         # Mesh message envelope and message types
+    inference_envelope.dart
+    node_capability.dart # Worker capability handshake
+    local_model.dart     # Imported model metadata and executable path
   services/
-    chat_service.dart    # Server, discovery, broadcast, dedupe
+    chat_service.dart    # Server, discovery, capability and mesh transport
+    inference_service.dart # Routing, streaming, native and llama-cli adapters
   screens/
-    nickname_screen.dart # Launch screen
-    chat_screen.dart     # Message list, peer sheet, input bar
-  widgets/
-    message_bubble.dart  # Bubble + image content
+    mesh_screen.dart     # Pool, nodes, prompt router and Model Bay
 test/
-  widget_test.dart       # Message serialization and round-trip
-  peer_test.dart         # Peer value semantics
+  inference_service_test.dart
+  node_capability_test.dart
 .github/workflows/
   ci.yml                 # analyze + test + Linux + Android on every push
   release.yml            # Linux/Windows/macOS/Android + signed GitHub release

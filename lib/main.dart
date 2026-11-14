@@ -6,7 +6,7 @@ import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 
 import 'services/chat_service.dart';
-import 'screens/nickname_screen.dart';
+import 'screens/mesh_screen.dart';
 import 'theme/retro.dart';
 
 /// The app draws its own Macintosh title bar inside the client area, but the
@@ -23,7 +23,7 @@ void main() async {
     await windowManager.ensureInitialized();
     await windowManager.waitUntilReadyToShow(
       const WindowOptions(
-        title: 'LanChat',
+        title: 'MeshMind',
         size: Size(680, 520),
         minimumSize: Size(440, 420),
         center: true,
@@ -41,23 +41,23 @@ void main() async {
   runApp(
     ChangeNotifierProvider(
       create: (_) => ChatService(),
-      child: const LanChatApp(),
+      child: const MeshMindApp(),
     ),
   );
 }
 
-class LanChatApp extends StatelessWidget {
-  const LanChatApp({super.key});
+class MeshMindApp extends StatelessWidget {
+  const MeshMindApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'LanChat',
+      title: 'MeshMind',
       debugShowCheckedModeBanner: false,
       themeMode: ThemeMode.dark,
       darkTheme: _theme(),
       theme: _theme(),
-      home: const NicknameScreen(),
+      home: const MeshScreen(),
     );
   }
 
@@ -94,7 +94,8 @@ class LanChatApp extends StatelessWidget {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: Retro.panel,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         border: square,
         enabledBorder: square,
         focusedBorder: const OutlineInputBorder(
