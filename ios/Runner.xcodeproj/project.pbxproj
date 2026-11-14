@@ -205,7 +205,7 @@
 			mainGroup = 97C146E51CF9000F007C117D;
 			packageReferences = (
 				781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage" */,
-				AABBCCDD0011223344556699 /* XCLocalSwiftPackageReference "../MeshMindInference" */,
+				AABBCCDD0011223344556699 /* XCLocalSwiftPackageReference "MeshMindInference" */,
 			);
 			productRefGroup = 97C146EF1CF9000F007C117D /* Products */;
 			projectDirPath = "";
@@ -631,9 +631,9 @@
 /* End XCConfigurationList section */
 
 /* Begin XCLocalSwiftPackageReference section */
-		AABBCCDD0011223344556699 /* XCLocalSwiftPackageReference "../MeshMindInference" */ = {
+		AABBCCDD0011223344556699 /* XCLocalSwiftPackageReference "MeshMindInference" */ = {
 			isa = XCLocalSwiftPackageReference;
-			relativePath = ../MeshMindInference;
+			relativePath = MeshMindInference;
 		};
 		781AD8BC2B33823900A9FFBB /* XCLocalSwiftPackageReference "Flutter/ephemeral/Packages/FlutterGeneratedPluginSwiftPackage" */ = {
 			isa = XCLocalSwiftPackageReference;
